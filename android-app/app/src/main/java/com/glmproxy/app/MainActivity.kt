@@ -126,6 +126,79 @@ class MainActivity : AppCompatActivity() {
         } else {
             setState(ProxyState.STOPPED)
         }
+
+        // If launched from the captcha notification, show the captcha dialog.
+        maybeShowCaptchaDialogFromIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Capture new intents sent while the activity is already running
+        // (e.g. user taps the captcha notification while the app is open).
+        setIntent(intent)
+        maybeShowCaptchaDialogFromIntent(intent)
+    }
+
+    /**
+     * Inspects the launch intent for the [ProxyService.ACTION_SHOW_CAPTCHA]
+     * action and opens the captcha dialog if present.
+     */
+    private fun maybeShowCaptchaDialogFromIntent(intent: Intent?) {
+        if (intent?.action == ProxyService.ACTION_SHOW_CAPTCHA) {
+            val log = intent.getStringExtra(ProxyService.EXTRA_CAPTCHA_LOG) ?: ""
+            val url = intent.getStringExtra(ProxyService.EXTRA_CAPTCHA_URL)
+                ?: "http://127.0.0.1:${ProxyBinary.port}/zcode/captcha/browser?client=standalone-browser"
+            showCaptchaDialog(log, url)
+        }
+    }
+
+    /**
+     * Shows a Material 3 AlertDialog with the captcha details and a button
+     * to open the captcha URL in the system browser. Also clears the
+     * captcha-pending flag in [ProxyService] so future captcha requests
+     * can post a fresh notification.
+     */
+    private fun showCaptchaDialog(logLine: String, url: String) {
+        // Clear the pending flag + cancel the active notification now that
+        // the user has seen the dialog.
+        ProxyService.clearCaptchaPending(this)
+
+        val dialogView = layoutInflater.inflate(R.layout.dialog_captcha, null)
+        dialogView.findViewById<android.widget.TextView>(R.id.captcha_url_text).text = url
+        dialogView.findViewById<android.widget.TextView>(R.id.captcha_log_text).text =
+            if (logLine.isBlank()) "(sem log detalhado)" else logLine
+
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.captcha_dialog_title)
+            .setView(dialogView)
+            .setCancelable(true)
+            .setNegativeButton(R.string.captcha_dialog_dismiss_button, null)
+            .create()
+
+        dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_captcha_open)
+            .setOnClickListener {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (e: Exception) {
+                    Log.w(TAG, "No browser available for captcha URL", e)
+                    Toast.makeText(this, "Nenhum navegador disponível", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+        dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_captcha_copy)
+            .setOnClickListener {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("captcha_url", url))
+                Toast.makeText(this, R.string.url_copied, Toast.LENGTH_SHORT).show()
+            }
+
+        dialog.setOnDismissListener {
+            // Make sure pending flag is clear when user closes the dialog
+            // (defensive — already cleared at show time).
+            ProxyService.clearCaptchaPending(this)
+        }
+
+        dialog.show()
     }
 
     override fun onResume() {

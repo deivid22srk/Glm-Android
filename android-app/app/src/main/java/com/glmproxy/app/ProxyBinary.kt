@@ -45,8 +45,25 @@ object ProxyBinary {
     const val DEFAULT_PORT = 3005
     private const val LOG_BUFFER_LINES = 1000
 
+    /**
+     * Marker strings that, when present in a Go stdout/stderr line, indicate
+     * the proxy needs user intervention to solve a captcha. The Go code emits
+     * these via `s.logs.add("warn", "captcha.browser_missing", ...)` and
+     * similar log entries — they're visible in the admin logs endpoint AND
+     * on stdout because the proxy logs to both.
+     */
+    private val CAPTCHA_MARKERS = listOf(
+        "captcha.browser_missing",
+        "captcha requested",
+        "a Z.ai pediu captcha",
+        "nao encontrei Chrome nem Edge",
+        "captcha.required",
+        "captcha.interactive_required"
+    )
+
     private val processRef = AtomicReference<Process?>(null)
     private val logBuffer = java.util.concurrent.ConcurrentLinkedDeque<String>()
+    private val logListeners = java.util.concurrent.CopyOnWriteArrayList<(String) -> Unit>()
 
     val port: Int
         get() = DEFAULT_PORT
@@ -58,10 +75,41 @@ object ProxyBinary {
      */
     fun recentLogs(): List<String> = logBuffer.toList()
 
+    /**
+     * Registers a callback invoked once per new log line, on the proxy
+     * stdout drain thread. The callback MUST be cheap — offload any heavy
+     * work to another thread. The listener is invoked with the raw line.
+     */
+    fun addLogListener(listener: (String) -> Unit) {
+        logListeners.add(listener)
+    }
+
+    /** Removes a previously-registered listener. No-op if not registered. */
+    fun removeLogListener(listener: (String) -> Unit) {
+        logListeners.remove(listener)
+    }
+
+    /**
+     * Returns true if the given log line indicates the proxy is blocked
+     * waiting for a captcha to be solved by the user.
+     */
+    fun isCaptchaRequest(line: String): Boolean {
+        return CAPTCHA_MARKERS.any { line.contains(it, ignoreCase = true) }
+    }
+
     private fun appendLog(line: String) {
         logBuffer.addLast(line)
         while (logBuffer.size > LOG_BUFFER_LINES) {
             logBuffer.pollFirst()
+        }
+        // Notify listeners — catch exceptions so one bad listener doesn't
+        // kill the drain thread.
+        for (listener in logListeners) {
+            try {
+                listener(line)
+            } catch (e: Exception) {
+                Log.w(TAG, "Log listener threw", e)
+            }
         }
     }
 

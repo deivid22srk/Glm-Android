@@ -31,4 +31,20 @@
     <string name="notification_channel_description">Mantém o proxy local em execução</string>
     <string name="notification_title">GLM Proxy ativo</string>
     <string name="notification_text">Proxy em http://127.0.0.1:%1$d</string>
+
+    <!-- Captcha notification -->
+    <string name="notification_channel_captcha_name">Captcha exigido</string>
+    <string name="notification_channel_captcha_description">Avisa quando a Z.ai pede captcha e precisa da sua ação</string>
+    <string name="captcha_notification_title">Captcha exigido pela Z.ai</string>
+    <string name="captcha_notification_text">Toque para resolver e desbloquear o proxy</string>
+    <string name="captcha_notification_big">%1$s</string>
+
+    <!-- Captcha dialog -->
+    <string name="captcha_dialog_title">Captcha exigido</string>
+    <string name="captcha_dialog_message">A Z.ai está pedindo um captcha para concluir a autenticação. O proxy não consegue resolver automaticamente porque não há Chrome/Edge disponível neste dispositivo.\n\nAbra o navegador do dispositivo, resolva o captcha na página carregada, e depois volte para este app — o proxy continuará automaticamente.</string>
+    <string name="captcha_dialog_log_label">Log do proxy:</string>
+    <string name="captcha_dialog_url_label">URL para abrir:</string>
+    <string name="captcha_dialog_open_button">Abrir no navegador</string>
+    <string name="captcha_dialog_copy_url_button">Copiar URL</string>
+    <string name="captcha_dialog_dismiss_button">Fechar</string>
 </resources>
