@@ -43,11 +43,27 @@ object ProxyBinary {
     private const val TAG = "ProxyBinary"
     private const val LIB_NAME = "libglmproxy.so"
     const val DEFAULT_PORT = 3005
+    private const val LOG_BUFFER_LINES = 1000
 
     private val processRef = AtomicReference<Process?>(null)
+    private val logBuffer = java.util.concurrent.ConcurrentLinkedDeque<String>()
 
     val port: Int
         get() = DEFAULT_PORT
+
+    /**
+     * Returns the most recent stdout/stderr lines from the Go process,
+     * oldest first. Cap is [LOG_BUFFER_LINES] lines; older lines are
+     * evicted as new ones arrive.
+     */
+    fun recentLogs(): List<String> = logBuffer.toList()
+
+    private fun appendLog(line: String) {
+        logBuffer.addLast(line)
+        while (logBuffer.size > LOG_BUFFER_LINES) {
+            logBuffer.pollFirst()
+        }
+    }
 
     /**
      * Returns the absolute path of the embedded Go binary, as installed by
@@ -114,11 +130,19 @@ object ProxyBinary {
         val process = pb.start()
 
         // Drain stdout/stderr on a background thread so the process doesn't
-        // deadlock on buffer full. Log to logcat for debuggability.
+        // deadlock on buffer full. Lines are appended to the in-memory ring
+        // buffer (for the in-app logs view) AND logged to logcat.
         Thread({
             process.inputStream.bufferedReader().useLines { lines ->
-                lines.forEach { line -> Log.i(TAG, "[go] $line") }
+                lines.forEach { line ->
+                    appendLog(line)
+                    Log.i(TAG, "[go] $line")
+                }
             }
+            // Process exited — record exit code so the UI can surface it.
+            val exitCode = try { process.waitFor() } catch (e: InterruptedException) { -1 }
+            appendLog("[proxy] processo finalizado com código $exitCode")
+            Log.i(TAG, "[proxy] processo finalizado com código $exitCode")
         }, "proxy-stdout").start()
 
         processRef.set(process)

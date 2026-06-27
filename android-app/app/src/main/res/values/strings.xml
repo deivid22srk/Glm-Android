@@ -1,14 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">GLM Proxy</string>
+
+    <!-- Status -->
+    <string name="status_label">Status</string>
     <string name="proxy_starting">Iniciando proxy…</string>
-    <string name="proxy_running">Proxy rodando em http://127.0.0.1:%1$d</string>
-    <string name="proxy_stopped">Proxy parado</string>
-    <string name="proxy_failed">Falha ao iniciar o proxy: %1$s</string>
+    <string name="proxy_running">Rodando em 127.0.0.1:%1$d</string>
+    <string name="proxy_stopping">Parando proxy…</string>
+    <string name="proxy_stopped">Parado</string>
+    <string name="proxy_failed">Falha: %1$s</string>
+    <string name="proxy_failed_short">Falha ao iniciar</string>
+
+    <!-- Actions -->
+    <string name="start_server">Iniciar servidor</string>
+    <string name="stop_server">Parar servidor</string>
+    <string name="copy_url">Copiar URL</string>
+    <string name="copy_logs">Copiar</string>
+    <string name="open_in_browser">Abrir no navegador</string>
+    <string name="url_copied">URL copiada para a área de transferência</string>
+    <string name="logs_copied">Logs copiados</string>
+
+    <!-- Cards -->
+    <string name="url_label">URL do proxy</string>
+    <string name="recent_logs">Logs recentes</string>
+    <string name="error_label">Erro</string>
+    <string name="no_logs">Ainda não há logs</string>
+
+    <!-- Foreground service notification -->
     <string name="notification_channel_name">GLM Proxy</string>
     <string name="notification_channel_description">Mantém o proxy local em execução</string>
     <string name="notification_title">GLM Proxy ativo</string>
     <string name="notification_text">Proxy em http://127.0.0.1:%1$d</string>
-    <string name="reload">Recarregar painel</string>
-    <string name="open_in_browser">Abrir no navegador</string>
 </resources>

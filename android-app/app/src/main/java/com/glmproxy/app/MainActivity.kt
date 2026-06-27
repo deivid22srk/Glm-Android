@@ -1,52 +1,66 @@
 package com.glmproxy.app
 
-import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.contract.ActivityResultContracts
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.glmproxy.app.databinding.ActivityMainBinding
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.concurrent.thread
 
 /**
- * Hosts the React panel served by the embedded Go proxy.
+ * Hosts the native Material 3 control surface for the GLM proxy.
  *
- * Lifecycle:
- *   1. onCreate starts [ProxyService] (which starts the Go binary).
- *   2. Polls http://127.0.0.1:3005/health until the proxy is ready.
- *   3. Loads the React panel into the WebView and hides the loading overlay.
+ * The activity is intentionally lightweight — it observes the state of
+ * [ProxyBinary] (a singleton) and renders cards based on a small state
+ * machine:
  *
- * The WebView is configured to behave like a desktop browser:
- *   - JavaScript + DOM storage enabled (React + localStorage).
- *   - Viewport = device width (panel is responsive but prefers desktop layout).
- *   - Custom WebViewClient keeps navigation inside the WebView (no external
- *     browser jump) for same-origin links, and routes external http(s) links
- *     to the system browser.
+ *   STOPPED → STARTING → RUNNING → STOPPING → STOPPED
+ *                  ↓                       ↓
+ *                FAILED ← (any failure) ← ─┘
+ *
+ * The actual Go process lives in [ProxyService], so the activity can be
+ * destroyed and recreated (rotation, theme change) without affecting the
+ * proxy. When the user taps "Abrir no navegador", the system browser
+ * loads the React panel served by the Go binary at 127.0.0.1:PORT.
  */
+enum class ProxyState {
+    STOPPED,
+    STARTING,
+    RUNNING,
+    STOPPING,
+    FAILED
+}
+
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private val handler = Handler(Looper.getMainLooper())
-    private var healthAttempts = 0
+    private var state: ProxyState = ProxyState.STOPPED
+    private var lastError: String? = null
 
-    private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* ignored */ }
+    /**
+     * Periodic state refresher. Polls /health once per second while the
+     * activity is in the foreground and the proxy is supposed to be
+     * running (STARTING or RUNNING). Updates the UI in place.
+     */
+    private val statePoller = object : Runnable {
+        override fun run() {
+            if (state == ProxyState.STARTING || state == ProxyState.RUNNING) {
+                checkHealthAsync()
+            }
+            handler.postDelayed(this, POLL_INTERVAL_MS)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,154 +68,235 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
 
-        // Request POST_NOTIFICATIONS on Android 13+ so the foreground service
-        // can post its persistent notification.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
+        binding.btnToggle.setOnClickListener { onToggleClicked() }
+        binding.btnCopyUrl.setOnClickListener { copyUrlToClipboard() }
+        binding.btnOpenBrowser.setOnClickListener { openInBrowser() }
+        binding.btnCopyLogs.setOnClickListener { copyLogsToClipboard() }
 
-        configureWebView()
-        startProxyService()
-        pollProxyHealth()
-
-        // Handle back press inside WebView history.
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (binding.webview.canGoBack()) {
-                    binding.webview.goBack()
-                } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                }
-            }
-        })
-
-        binding.btnRetry.setOnClickListener {
-            binding.errorOverlay.visibility = View.GONE
-            binding.loadingOverlay.visibility = View.VISIBLE
-            binding.loadingText.text = getString(R.string.proxy_starting)
-            healthAttempts = 0
-            startProxyService()
-            pollProxyHealth()
+        // Assess current state on launch — the proxy may already be running
+        // (e.g. service started from a previous launch that the user
+        // navigated away from without stopping).
+        if (ProxyBinary.isRunning()) {
+            setState(ProxyState.STARTING)
+        } else {
+            setState(ProxyState.STOPPED)
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun configureWebView() {
-        val settings: WebSettings = binding.webview.settings
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.databaseEnabled = true
-        settings.allowFileAccess = false
-        settings.allowContentAccess = false
-        settings.mediaPlaybackRequiresUserGesture = false
-        settings.cacheMode = WebSettings.LOAD_DEFAULT
-        settings.userAgentString = "GLMProxy-Android/1.0 (WebView)"
-        // The React panel was designed for desktop width; force a wide viewport
-        // and let the page scale down to fit, so the UI matches the desktop app.
-        settings.useWideViewPort = true
-        settings.loadWithOverviewMode = true
-
-        binding.webview.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest
-            ): Boolean {
-                val url = request.url
-                val host = url.host ?: return false
-                // Internal loopback URLs (panel + API) stay in the WebView.
-                if (host == "127.0.0.1" || host == "localhost") {
-                    return false
-                }
-                // Anything else (e.g. OAuth callback links, external docs) opens
-                // in the system browser.
-                startActivity(Intent(Intent.ACTION_VIEW, url))
-                return true
-            }
-        }
+    override fun onResume() {
+        super.onResume()
+        handler.post(statePoller)
     }
 
-    private fun startProxyService() {
-        val intent = Intent(this, ProxyService::class.java)
-        ContextCompat.startForegroundService(this, intent)
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(statePoller)
     }
 
-    private fun pollProxyHealth() {
-        thread(name = "proxy-health") {
-            val url = URL("http://127.0.0.1:${ProxyBinary.port}/health")
-            while (healthAttempts < MAX_HEALTH_ATTEMPTS) {
-                try {
-                    val conn = (url.openConnection() as HttpURLConnection).apply {
-                        connectTimeout = 800
-                        readTimeout = 800
-                        requestMethod = "GET"
-                    }
-                    conn.connect()
-                    val code = conn.responseCode
-                    conn.disconnect()
-                    if (code == 200) {
-                        handler.post { loadPanel() }
-                        return@thread
-                    }
-                } catch (_: IOException) {
-                    // proxy not ready yet — retry
-                }
-                healthAttempts++
-                Thread.sleep(HEALTH_POLL_INTERVAL_MS)
-            }
-            handler.post { showFatalError("Proxy não respondeu após $MAX_HEALTH_ATTEMPTS tentativas.") }
-        }
-    }
-
-    private fun loadPanel() {
-        val url = "http://127.0.0.1:${ProxyBinary.port}/"
-        binding.webview.loadUrl(url)
-        binding.loadingOverlay.visibility = View.GONE
-        binding.toolbar.subtitle = getString(R.string.proxy_running, ProxyBinary.port)
-        // Give the WebView a moment to render before hiding overlay, to avoid
-        // a brief flash of background color.
-        handler.postDelayed({
-            binding.loadingOverlay.visibility = View.GONE
-        }, 400)
-    }
-
-    private fun showFatalError(message: String) {
-        binding.loadingOverlay.visibility = View.GONE
-        binding.errorText.text = message
-        binding.errorOverlay.visibility = View.VISIBLE
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+        // No menu items — all controls are inline cards. Returning true so
+        // the toolbar shows; we can add items later if needed.
         return true
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_reload -> {
-                binding.webview.reload()
-                true
-            }
-            R.id.action_open_browser -> {
-                startActivity(Intent(Intent.ACTION_VIEW,
-                    Uri.parse("http://127.0.0.1:${ProxyBinary.port}/")))
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
+    // --- State transitions -------------------------------------------------
+
+    private fun onToggleClicked() {
+        when (state) {
+            ProxyState.STOPPED, ProxyState.FAILED -> startServer()
+            ProxyState.STARTING, ProxyState.RUNNING, ProxyState.STOPPING -> stopServer()
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        handler.removeCallbacksAndMessages(null)
-        // Note: we intentionally do NOT stop ProxyService here. The service is
-        // stopped when the user explicitly swipes the app away from recents,
-        // which triggers onTaskRemoved → stopSelf in the service.
+    private fun startServer() {
+        lastError = null
+        setState(ProxyState.STARTING)
+        // ProxyService.onCreate() will call ProxyBinary.start() and post
+        // the foreground notification.
+        val intent = Intent(this, ProxyService::class.java)
+        ContextCompat.startForegroundService(this, intent)
+        // Kick off an immediate health check rather than waiting for the
+        // next poller tick.
+        checkHealthAsync()
+    }
+
+    private fun stopServer() {
+        setState(ProxyState.STOPPING)
+        // ProxyBinary.stop() blocks for up to 12s waiting for graceful
+        // shutdown — must not run on the UI thread.
+        Thread({
+            try {
+                stopService(Intent(this, ProxyService::class.java))
+                ProxyBinary.stop()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error stopping proxy", e)
+            }
+            handler.post { setState(ProxyState.STOPPED) }
+        }, "proxy-stop").start()
+    }
+
+    private fun checkHealthAsync() {
+        Thread({
+            val code = try {
+                val url = URL("http://127.0.0.1:${ProxyBinary.port}/health")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 800
+                    readTimeout = 800
+                    requestMethod = "GET"
+                }
+                conn.connect()
+                val c = conn.responseCode
+                conn.disconnect()
+                c
+            } catch (_: IOException) {
+                -1
+            }
+            handler.post { onHealthResult(code) }
+        }, "proxy-health").start()
+    }
+
+    private fun onHealthResult(code: Int) {
+        if (state == ProxyState.STOPPING || state == ProxyState.STOPPED) {
+            // User already initiated shutdown — don't transition based on
+            // stale health results.
+            return
+        }
+        if (code == 200) {
+            setState(ProxyState.RUNNING)
+        } else if (ProxyBinary.isRunning()) {
+            // Process is alive but health check failed — still starting.
+            setState(ProxyState.STARTING)
+        } else {
+            // Process died unexpectedly.
+            val logs = ProxyBinary.recentLogs().takeLast(10).joinToString("\n")
+            setState(ProxyState.FAILED, "Processo morreu.\nÚltimos logs:\n$logs")
+        }
+    }
+
+    private fun setState(newState: ProxyState, error: String? = null) {
+        state = newState
+        if (error != null) lastError = error
+        renderState()
+    }
+
+    // --- Rendering ---------------------------------------------------------
+
+    private fun renderState() {
+        when (state) {
+            ProxyState.STOPPED -> renderStopped()
+            ProxyState.STARTING -> renderStarting()
+            ProxyState.RUNNING -> renderRunning()
+            ProxyState.STOPPING -> renderStopping()
+            ProxyState.FAILED -> renderFailed()
+        }
+        renderLogs()
+    }
+
+    private fun renderStopped() {
+        binding.statusText.text = getString(R.string.proxy_stopped)
+        binding.statusDot.setBackgroundResource(R.drawable.status_dot_red)
+        binding.loadingProgress.visibility = View.GONE
+        binding.urlCard.visibility = View.GONE
+        binding.errorCard.visibility = View.GONE
+        binding.logsCard.visibility = if (ProxyBinary.recentLogs().isEmpty()) View.GONE else View.VISIBLE
+        binding.btnToggle.text = getString(R.string.start_server)
+        binding.btnToggle.icon = ContextCompat.getDrawable(this, android.R.drawable.ic_media_play)
+        binding.btnToggle.isEnabled = true
+        binding.toolbar.subtitle = getString(R.string.proxy_stopped)
+    }
+
+    private fun renderStarting() {
+        binding.statusText.text = getString(R.string.proxy_starting)
+        binding.statusDot.setBackgroundResource(R.drawable.status_dot_yellow)
+        binding.loadingProgress.visibility = View.VISIBLE
+        binding.urlCard.visibility = View.GONE
+        binding.errorCard.visibility = View.GONE
+        binding.logsCard.visibility = View.VISIBLE
+        binding.btnToggle.text = getString(R.string.stop_server)
+        binding.btnToggle.icon = ContextCompat.getDrawable(this, android.R.drawable.ic_media_pause)
+        binding.btnToggle.isEnabled = true
+        binding.toolbar.subtitle = getString(R.string.proxy_starting)
+    }
+
+    private fun renderRunning() {
+        val url = "http://127.0.0.1:${ProxyBinary.port}"
+        binding.statusText.text = getString(R.string.proxy_running, ProxyBinary.port)
+        binding.statusDot.setBackgroundResource(R.drawable.status_dot_green)
+        binding.loadingProgress.visibility = View.GONE
+        binding.urlCard.visibility = View.VISIBLE
+        binding.urlText.text = url
+        binding.errorCard.visibility = View.GONE
+        binding.logsCard.visibility = View.VISIBLE
+        binding.btnToggle.text = getString(R.string.stop_server)
+        binding.btnToggle.icon = ContextCompat.getDrawable(this, android.R.drawable.ic_media_pause)
+        binding.btnToggle.isEnabled = true
+        binding.toolbar.subtitle = url
+    }
+
+    private fun renderStopping() {
+        binding.statusText.text = getString(R.string.proxy_stopping)
+        binding.statusDot.setBackgroundResource(R.drawable.status_dot_yellow)
+        binding.loadingProgress.visibility = View.VISIBLE
+        binding.urlCard.visibility = View.GONE
+        binding.errorCard.visibility = View.GONE
+        binding.logsCard.visibility = View.VISIBLE
+        binding.btnToggle.text = getString(R.string.proxy_stopping)
+        binding.btnToggle.icon = ContextCompat.getDrawable(this, android.R.drawable.ic_media_pause)
+        binding.btnToggle.isEnabled = false
+        binding.toolbar.subtitle = getString(R.string.proxy_stopping)
+    }
+
+    private fun renderFailed() {
+        binding.statusText.text = getString(R.string.proxy_failed_short)
+        binding.statusDot.setBackgroundResource(R.drawable.status_dot_red)
+        binding.loadingProgress.visibility = View.GONE
+        binding.urlCard.visibility = View.GONE
+        binding.errorCard.visibility = if (lastError != null) View.VISIBLE else View.GONE
+        binding.errorText.text = lastError
+        binding.logsCard.visibility = View.VISIBLE
+        binding.btnToggle.text = getString(R.string.start_server)
+        binding.btnToggle.icon = ContextCompat.getDrawable(this, android.R.drawable.ic_media_play)
+        binding.btnToggle.isEnabled = true
+        binding.toolbar.subtitle = getString(R.string.proxy_failed_short)
+    }
+
+    private fun renderLogs() {
+        val logs = ProxyBinary.recentLogs()
+        binding.logsText.text = if (logs.isEmpty()) {
+            getString(R.string.no_logs)
+        } else {
+            logs.takeLast(500).joinToString("\n")
+        }
+    }
+
+    // --- Actions -----------------------------------------------------------
+
+    private fun copyUrlToClipboard() {
+        val url = "http://127.0.0.1:${ProxyBinary.port}"
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("url", url))
+        Toast.makeText(this, R.string.url_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun copyLogsToClipboard() {
+        val logs = ProxyBinary.recentLogs().joinToString("\n")
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("logs", logs))
+        Toast.makeText(this, R.string.logs_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun openInBrowser() {
+        val url = "http://127.0.0.1:${ProxyBinary.port}/"
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (e: Exception) {
+            Log.w(TAG, "No browser available", e)
+            Toast.makeText(this, "Nenhum navegador disponível", Toast.LENGTH_SHORT).show()
+        }
     }
 
     companion object {
         private const val TAG = "MainActivity"
-        private const val MAX_HEALTH_ATTEMPTS = 60
-        private const val HEALTH_POLL_INTERVAL_MS = 500L
+        private const val POLL_INTERVAL_MS = 1000L
     }
 }

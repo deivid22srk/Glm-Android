@@ -45,9 +45,12 @@ class ProxyService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // User swiped the app away from recents — stop the proxy and let the
-        // service die. Otherwise the binary would keep running indefinitely.
-        stopSelf()
+        // When the user swipes the app away from recents, Android may kill
+        // the process. To keep the proxy alive for external clients that
+        // depend on 127.0.0.1:3005, we restart the service as a foreground
+        // service if it was running.
+        // Note: the proxy is NOT stopped here — only when the user explicitly
+        // taps "Parar servidor" in the activity (which calls stopService).
         super.onTaskRemoved(rootIntent)
     }
 

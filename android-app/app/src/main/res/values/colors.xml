@@ -2,7 +2,11 @@
 <resources>
     <color name="bg_dark">#FF0B0F14</color>
     <color name="bg_panel">#FF11161D</color>
+    <color name="stroke_subtle">#FF1F2937</color>
     <color name="accent_blue">#FF3B82F6</color>
+    <color name="accent_green">#FF22C55E</color>
+    <color name="accent_yellow">#FFEAB308</color>
+    <color name="accent_red">#FFEF4444</color>
     <color name="text_primary">#FFFFFFFF</color>
     <color name="text_secondary">#FFB4BDC9</color>
 </resources>
