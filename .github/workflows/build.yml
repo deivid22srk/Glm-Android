@@ -1,0 +1,161 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK (frontend + Go binary + Android)
+    runs-on: ubuntu-22.04
+
+    env:
+      GO_VERSION_FILE: go.mod
+      NODE_VERSION: "22"
+      NDK_VERSION: "27.0.12077973"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: cmd/desktop/frontend/package-lock.json
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-35
+            build-tools;35.0.0
+            ndk;${{ env.NDK_VERSION }}
+
+      - name: Install frontend dependencies
+        working-directory: cmd/desktop/frontend
+        run: npm ci
+
+      - name: Build frontend (React panel)
+        working-directory: cmd/desktop/frontend
+        run: npm run build
+
+      - name: Stage frontend dist for Go embed
+        run: |
+          rm -rf cmd/server/frontend_dist
+          cp -r cmd/desktop/frontend/dist cmd/server/frontend_dist
+          # Ensure there's at least one file so //go:embed doesn't fail
+          ls -la cmd/server/frontend_dist | head -20
+
+      - name: Run Go tests
+        run: |
+          # Skip tests that depend on Windows-only PowerShell helpers
+          go test ./internal/... ./cmd/server/...
+
+      - name: Run Go vet
+        run: go vet ./...
+
+      - name: Cross-compile Go binary for Android arm64
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+        run: |
+          mkdir -p android-app/app/src/main/jniLibs/arm64-v8a
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          export CXX="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
+          echo "Using CC=$CC"
+          GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+            go build -buildmode=pie -trimpath -ldflags='-s -w' \
+            -o android-app/app/src/main/jniLibs/arm64-v8a/libglmproxy.so \
+            ./cmd/server
+          file android-app/app/src/main/jniLibs/arm64-v8a/libglmproxy.so
+          ls -lh android-app/app/src/main/jniLibs/arm64-v8a/libglmproxy.so
+
+      - name: Setup signing (release)
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No signing secrets provided — falling back to debug signing"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/xed.keystore
+          cat > /tmp/signing.properties <<EOF
+          storeFile=/tmp/xed.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          echo "Signing properties written"
+
+      - name: Build APK
+        working-directory: android-app
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          chmod +x gradlew
+          if [ -f /tmp/signing.properties ]; then
+            ./gradlew assembleRelease --no-daemon --stacktrace
+            cp app/build/outputs/apk/release/app-release.apk \
+               ../glm-proxy-android-arm64.apk
+          else
+            ./gradlew assembleDebug --no-daemon --stacktrace
+            cp app/build/outputs/apk/debug/app-debug.apk \
+               ../glm-proxy-android-arm64.apk
+          fi
+
+      - name: Generate SHA256 checksum
+        run: |
+          sha256sum glm-proxy-android-arm64.apk > glm-proxy-android-arm64.apk.sha256
+          cat glm-proxy-android-arm64.apk.sha256
+          ls -lh glm-proxy-android-arm64.apk*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: glm-proxy-android-arm64
+          path: |
+            glm-proxy-android-arm64.apk
+            glm-proxy-android-arm64.apk.sha256
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            glm-proxy-android-arm64.apk
+            glm-proxy-android-arm64.apk.sha256
+          generate_release_notes: true
+          draft: false
+          prerelease: false

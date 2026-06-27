@@ -1,0 +1,63 @@
+# Local user data and secrets
+.env
+.env.*
+*.enc.json
+admin.json
+zcode-accounts*.json
+zcode-accounts*.enc.json
+captcha-headless-profile/
+
+# Logs and local IDE state
+.logs/
+.kilo/
+.codex/
+.codex-temp/
+*.log
+
+# Local investigation work
+waf aliyun esa/
+
+# Extracted or patched third-party app artifacts
+*.asar
+.zcode-app.patched.asar
+extracted/
+app.asar.unpacked/
+
+# Go/Wails build outputs
+build/bin/
+build/*.exe
+build/*-linux-amd64
+dist/
+!internal/automation/assets/aliyun-captcha-solver/dist/
+!internal/automation/assets/aliyun-captcha-solver/dist/**
+release-dist/
+
+# Frontend generated dependencies/build
+cmd/desktop/frontend/node_modules/
+cmd/desktop/frontend/dist/
+cmd/desktop/frontend/wailsjs/
+cmd/desktop/frontend/package.json.md5
+
+# Go/test cache and temporary files
+*.test
+*.tmp
+coverage.out
+
+# Android build artifacts
+android-app/.gradle/
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+android-app/.idea/
+android-app/captures/
+android-app/.cxx/
+android-app/*.iml
+
+# Frontend dist staged for Go embed (generated at build time)
+cmd/server/frontend_dist/*
+!cmd/server/frontend_dist/.gitkeep
+
+# Signing
+*.keystore
+*.jks
+signing.properties

@@ -1,0 +1,3 @@
+# Local configuration — DO NOT COMMIT
+# Path to Android SDK on this machine. The CI workflow sets this automatically.
+# sdk.dir=/home/USER/Android/Sdk

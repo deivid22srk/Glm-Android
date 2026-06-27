@@ -1,0 +1,17 @@
+# Android build artifacts
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing
+*.keystore
+*.jks
+signing.properties
+
+# Kotlin
+.kotlin/

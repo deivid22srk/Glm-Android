@@ -1,0 +1,12 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "glm5.2proxy",
+  "outputfilename": "glm5.2proxy",
+  "frontend:dir": "cmd/desktop/frontend",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "author": {
+    "name": "maicon2"
+  }
+}
