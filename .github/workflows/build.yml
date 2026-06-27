@@ -123,13 +123,27 @@ jobs:
             exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > /tmp/xed.keystore
-          cat > /tmp/signing.properties <<EOF
-          storeFile=/tmp/xed.keystore
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASSWORD
-          EOF
-          echo "Signing properties written"
+          # Write signing.properties line-by-line via printf to avoid the
+          # bash heredoc indentation trap: with 'cat <<EOF', the EOF
+          # terminator MUST be at column 0 — but YAML 'run: |' requires
+          # consistent indentation, so an indented EOF silently swallows
+          # all following lines into the file. '<<-EOF' would work but
+          # only with tabs, not spaces. printf is unambiguous.
+          # See plan 011 for the full bug analysis.
+          {
+            printf 'storeFile=%s\n'   "/tmp/xed.keystore"
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n'    "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > /tmp/signing.properties
+          echo "Signing properties written:"
+          cat /tmp/signing.properties
+          # Sanity check: exactly 4 non-empty lines, all starting with a key.
+          line_count=$(grep -c '^[a-zA-Z]' /tmp/signing.properties || true)
+          if [ "$line_count" != "4" ]; then
+            echo "::error::signing.properties has $line_count keys, expected 4"
+            exit 1
+          fi
 
       - name: Build APK
         working-directory: android-app
