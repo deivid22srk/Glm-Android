@@ -124,10 +124,33 @@ class ProxyService : Service() {
 
     private fun buildNotification(): Notification {
         val text = getString(R.string.notification_text, ProxyBinary.port)
+        // Tapping the foreground notification opens MainActivity — the same
+        // behavior users expect from any persistent notification (compare
+        // with media players, VPN apps, etc.). Without this, tapping did
+        // nothing (finding C-12). Uses FLAG_IMMUTABLE per Android 12+
+        // requirement; FLAG_UPDATE_CURRENT so the intent is reused across
+        // notification updates (the foreground notification is reposted
+        // every time the service starts).
+        val contentIntent = Intent(this, MainActivity::class.java).apply {
+            // FLAG_ACTIVITY_NEW_TASK: required because we're starting an
+            //   Activity from outside an Activity context (the Service).
+            // FLAG_ACTIVITY_CLEAR_TOP: if MainActivity is already in the
+            //   back stack, bring it to the front instead of stacking a
+            //   new instance on top (matches launchMode=singleTop which
+            //   is set in the manifest).
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this,
+            REQUEST_CODE_FOREGROUND,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, CHANNEL_ID_FOREGROUND)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentIntent(contentPendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
@@ -206,6 +229,7 @@ class ProxyService : Service() {
         private const val CHANNEL_ID_CAPTCHA = "glm_proxy_captcha"
         private const val NOTIF_ID = 1
         private const val NOTIF_ID_CAPTCHA = 2
+        private const val REQUEST_CODE_FOREGROUND = 1000
         private const val REQUEST_CODE_CAPTCHA = 1001
         private const val REQUEST_CODE_CAPTCHA_DELETE = 1002
 
