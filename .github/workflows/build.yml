@@ -24,7 +24,6 @@ jobs:
     env:
       GO_VERSION_FILE: go.mod
       NODE_VERSION: "22"
-      NDK_VERSION: "27.0.12077973"
 
     steps:
       - name: Checkout
@@ -50,12 +49,23 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-35
-            build-tools;35.0.0
-            ndk;${{ env.NDK_VERSION }}
+        shell: bash
+        run: |
+          # The GitHub-hosted Ubuntu runner already has the Android SDK
+          # installed at $ANDROID_HOME. We just need to make sure the
+          # platform, build-tools, and NDK we need are present.
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973" || true
+          # Verify they are installed
+          ls -la "$ANDROID_HOME/platforms/android-35" 2>/dev/null || echo "warn: android-35 platform missing"
+          ls -la "$ANDROID_HOME/build-tools/35.0.0" 2>/dev/null || echo "warn: build-tools 35 missing"
+          ls -la "$ANDROID_HOME/ndk/27.0.12077973" 2>/dev/null || echo "warn: ndk 27 missing"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
 
       - name: Install frontend dependencies
         working-directory: cmd/desktop/frontend
@@ -82,8 +92,8 @@ jobs:
 
       - name: Cross-compile Go binary for Android arm64
         env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
-          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
         run: |
           mkdir -p android-app/app/src/main/jniLibs/arm64-v8a
           export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
@@ -120,9 +130,11 @@ jobs:
       - name: Build APK
         working-directory: android-app
         env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
         run: |
+          # AGP requires local.properties pointing at the SDK.
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
           chmod +x gradlew
           if [ -f /tmp/signing.properties ]; then
             ./gradlew assembleRelease --no-daemon --stacktrace
