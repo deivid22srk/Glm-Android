@@ -13,6 +13,11 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
+import com.google.android.material.color.DynamicColors
 import com.glmproxy.app.databinding.ActivityMainBinding
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -33,6 +38,14 @@ import java.net.URL
  * destroyed and recreated (rotation, theme change) without affecting the
  * proxy. When the user taps "Abrir no navegador", the system browser
  * loads the React panel served by the Go binary at 127.0.0.1:PORT.
+ *
+ * Material 3 specifics:
+ *  - Edge-to-edge layout (`WindowCompat.setDecorFitsSystemWindows(false)`)
+ *    with manual inset application on the toolbar (top) and the scroll
+ *    view (bottom) so content draws behind the status / navigation bars
+ *    without being obscured by them.
+ *  - Dynamic Color (Material You) is applied on Android 12+, deriving
+ *    the color palette from the user's wallpaper.
  */
 enum class ProxyState {
     STOPPED,
@@ -64,9 +77,41 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Enable edge-to-edge so the app draws behind the status / nav bars.
+        // The toolbar and bottom of the scroll view get manual padding via
+        // WindowInsetsCompat listeners below so content is not obscured.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        // Apply Material You dynamic color on Android 12+ (no-op on older
+        // versions — falls back to the static theme palette).
+        DynamicColors.applyToActivityIfAvailable(this)
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
+
+        // Toolbar: apply top inset = status bar height so the title and
+        // subtitle are not obscured by the status bar.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.toolbar) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.updatePadding(top = bars.top)
+            insets
+        }
+
+        // Scroll view: apply bottom inset = navigation bar height so the
+        // last card is not obscured by the gesture nav bar.
+        ViewCompat.setOnApplyWindowInsetsListener(binding.scrollView) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.updatePadding(bottom = bars.bottom)
+            insets
+        }
+
+        // Make sure the toolbar icons are visible against the dark background.
+        // (Already set in theme via android:windowLightStatusBar=false, but
+        // repeat here in case dynamic color overrides the theme.)
+        WindowCompat.getInsetsController(window, window.decorView)
+            .isAppearanceLightStatusBars = false
 
         binding.btnToggle.setOnClickListener { onToggleClicked() }
         binding.btnCopyUrl.setOnClickListener { copyUrlToClipboard() }

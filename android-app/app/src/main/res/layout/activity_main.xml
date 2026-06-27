@@ -4,26 +4,29 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_dark">
+    android:background="?android:attr/colorBackground"
+    android:fitsSystemWindows="false">
 
     <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/bg_panel"
-        app:elevation="0dp">
+        android:background="@android:color/transparent"
+        app:liftOnScroll="true"
+        app:liftOnScrollTargetViewId="@id/scroll_view">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="@color/bg_panel"
             app:title="@string/app_name"
-            app:titleTextColor="@color/text_primary"
-            app:subtitleTextColor="@color/text_secondary"
-            app:subtitle="@string/proxy_stopped" />
+            app:subtitle="@string/proxy_stopped"
+            app:titleTextColor="?attr/colorOnSurface"
+            app:subtitleTextColor="?attr/colorOnSurfaceVariant" />
     </com.google.android.material.appbar.AppBarLayout>
 
-    <ScrollView
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scroll_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true"
@@ -33,18 +36,17 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:paddingHorizontal="16dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="32dp">
 
             <!-- Status Card -->
             <com.google.android.material.card.MaterialCardView
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/bg_panel"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/stroke_subtle"
-                app:strokeWidth="1dp">
+                app:cardCornerRadius="16dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -70,7 +72,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/status_label"
-                            android:textColor="@color/text_secondary"
+                            android:textColor="?attr/colorOnSurfaceVariant"
                             android:textSize="11sp"
                             android:letterSpacing="0.08"
                             android:textAllCaps="true" />
@@ -81,7 +83,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             android:text="@string/proxy_stopped"
-                            android:textColor="@color/text_primary"
+                            android:textColor="?attr/colorOnSurface"
                             android:textSize="20sp"
                             android:textStyle="bold" />
                     </LinearLayout>
@@ -91,22 +93,19 @@
                         android:layout_width="28dp"
                         android:layout_height="28dp"
                         android:visibility="gone"
-                        android:indeterminateTint="@color/accent_blue" />
+                        android:indeterminateTint="?attr/colorPrimary" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <!-- URL Card (visible only when running) -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/url_card"
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
                 android:visibility="gone"
-                app:cardBackgroundColor="@color/bg_panel"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/stroke_subtle"
-                app:strokeWidth="1dp">
+                app:cardCornerRadius="16dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -118,7 +117,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/url_label"
-                        android:textColor="@color/text_secondary"
+                        android:textColor="?attr/colorOnSurfaceVariant"
                         android:textSize="11sp"
                         android:letterSpacing="0.08"
                         android:textAllCaps="true" />
@@ -128,7 +127,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:textColor="@color/accent_blue"
+                        android:textColor="?attr/colorPrimary"
                         android:textSize="17sp"
                         android:fontFamily="monospace"
                         android:textIsSelectable="true"
@@ -142,7 +141,7 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btn_copy_url"
-                            style="@style/Widget.Material3.Button.TonalButton"
+                            style="?attr/materialButtonTonalStyle"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
@@ -152,7 +151,7 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btn_open_browser"
-                            style="@style/Widget.Material3.Button.TonalButton"
+                            style="?attr/materialButtonTonalStyle"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
@@ -167,15 +166,13 @@
             <!-- Error Card -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/error_card"
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
                 android:visibility="gone"
-                app:cardBackgroundColor="@color/bg_panel"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/accent_red"
-                app:strokeWidth="1dp">
+                app:cardCornerRadius="16dp"
+                app:strokeColor="?attr/colorError">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -187,7 +184,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/error_label"
-                        android:textColor="@color/accent_red"
+                        android:textColor="?attr/colorError"
                         android:textSize="11sp"
                         android:letterSpacing="0.08"
                         android:textAllCaps="true" />
@@ -197,7 +194,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:textColor="@color/text_primary"
+                        android:textColor="?attr/colorOnSurface"
                         android:textSize="13sp"
                         android:fontFamily="monospace" />
                 </LinearLayout>
@@ -206,15 +203,12 @@
             <!-- Logs Card -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/logs_card"
+                style="?attr/materialCardViewOutlinedStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
                 android:visibility="gone"
-                app:cardBackgroundColor="@color/bg_panel"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/stroke_subtle"
-                app:strokeWidth="1dp">
+                app:cardCornerRadius="16dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -233,14 +227,14 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:text="@string/recent_logs"
-                            android:textColor="@color/text_secondary"
+                            android:textColor="?attr/colorOnSurfaceVariant"
                             android:textSize="11sp"
                             android:letterSpacing="0.08"
                             android:textAllCaps="true" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btn_copy_logs"
-                            style="@style/Widget.Material3.Button.TextButton"
+                            style="?attr/borderlessButtonStyle"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/copy_logs"
@@ -252,7 +246,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="240dp"
                         android:layout_marginTop="8dp"
-                        android:background="@color/bg_dark"
+                        android:background="?attr/colorSurfaceContainerLow"
                         android:padding="8dp">
 
                         <TextView
@@ -261,7 +255,7 @@
                             android:layout_height="wrap_content"
                             android:fontFamily="monospace"
                             android:textSize="11sp"
-                            android:textColor="@color/text_secondary"
+                            android:textColor="?attr/colorOnSurfaceVariant"
                             android:textIsSelectable="true" />
                     </ScrollView>
                 </LinearLayout>
@@ -270,6 +264,7 @@
             <!-- Primary Action Button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_toggle"
+                style="@style/Widget.Material3.Button"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:layout_marginTop="8dp"
@@ -279,5 +274,5 @@
                 app:cornerRadius="16dp" />
 
         </LinearLayout>
-    </ScrollView>
+    </androidx.core.widget.NestedScrollView>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
