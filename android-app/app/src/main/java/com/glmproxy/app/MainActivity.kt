@@ -1,16 +1,19 @@
 package com.glmproxy.app
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -60,6 +63,27 @@ class MainActivity : AppCompatActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private var state: ProxyState = ProxyState.STOPPED
     private var lastError: String? = null
+
+    /**
+     * Requests POST_NOTIFICATIONS at runtime on Android 13+ (API 33+).
+     * Without this permission, the captcha notification silently does
+     * nothing on modern devices — the entire captcha-alert feature
+     * depends on it. See plan 010 for details.
+     *
+     * On permission denial we show a Toast (best-effort, no persistent
+     * UI surface for the denial state — would belong in a future
+     * settings screen).
+     */
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                Toast.makeText(
+                    this,
+                    "Sem permissão de notificações — alertas de captcha não serão exibidos",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
 
     /**
      * Periodic state refresher. Polls /health once per second while the
@@ -112,6 +136,14 @@ class MainActivity : AppCompatActivity() {
         // repeat here in case dynamic color overrides the theme.)
         WindowCompat.getInsetsController(window, window.decorView)
             .isAppearanceLightStatusBars = false
+
+        // Request POST_NOTIFICATIONS at runtime on Android 13+.
+        // Without this the captcha notification silently does nothing —
+        // the permission is declared in the manifest but Android requires
+        // an explicit runtime request starting from API 33.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         binding.btnToggle.setOnClickListener { onToggleClicked() }
         binding.btnCopyUrl.setOnClickListener { copyUrlToClipboard() }

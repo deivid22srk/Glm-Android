@@ -64,13 +64,14 @@ class ProxyService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // If launched via the captcha notification's action, surface the
-        // captcha dialog immediately by launching MainActivity with the
-        // appropriate extra. The activity handles the dialog display.
-        if (intent?.action == ACTION_SHOW_CAPTCHA) {
-            // No-op here — the PendingIntent already points to MainActivity.
-            // The service doesn't need to do anything else; we just consume
-            // the start so START_STICKY semantics aren't confused.
+        // Handle the captcha-dismiss signal: the user swiped the captcha
+        // notification away (or the system auto-dismissed it). Clear the
+        // pending flag so future captcha log lines can post a fresh
+        // notification — without this, one swipe would permanently
+        // suppress all subsequent captcha alerts.
+        if (intent?.action == ACTION_CAPTCHA_DISMISSED) {
+            captchaPendingStatic.set(false)
+            Log.i(TAG, "Captcha notification dismissed by user — re-arming alert")
         }
         return START_STICKY
     }
@@ -135,19 +136,41 @@ class ProxyService : Service() {
     /**
      * Posts a high-priority notification informing the user that a captcha
      * needs to be solved. Tapping the notification opens MainActivity with
-     * the [EXTRA_SHOW_CAPTCHA] extra, which triggers the captcha dialog.
+     * the [ACTION_SHOW_CAPTCHA] action, which triggers the captcha dialog.
+     *
+     * If the user swipes the notification away instead of tapping it, the
+     * [deleteIntent] fires [ACTION_CAPTCHA_DISMISSED] back to this service,
+     * which clears the [captchaPendingStatic] debounce flag so future
+     * captcha requests can post a fresh notification. Without this, one
+     * swipe-dismiss would permanently suppress all subsequent captcha
+     * alerts (the bug fixed in plan 010).
      */
     private fun postCaptchaNotification(logLine: String) {
-        val intent = Intent(this, MainActivity::class.java).apply {
+        val contentIntent = Intent(this, MainActivity::class.java).apply {
             action = ACTION_SHOW_CAPTCHA
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra(EXTRA_CAPTCHA_LOG, logLine)
             putExtra(EXTRA_CAPTCHA_URL, captchaUrl())
         }
-        val pendingIntent = PendingIntent.getActivity(
+        val contentPendingIntent = PendingIntent.getActivity(
             this,
             REQUEST_CODE_CAPTCHA,
-            intent,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Delete intent: fires when the user swipes the notification away
+        // (or the system auto-dismisses it). Distinct from contentIntent
+        // which fires on tap. Routes back to this service with the
+        // ACTION_CAPTCHA_DISMISSED action so onStartCommand can clear the
+        // debounce flag.
+        val deleteIntent = Intent(this, ProxyService::class.java).apply {
+            action = ACTION_CAPTCHA_DISMISSED
+        }
+        val deletePendingIntent = PendingIntent.getService(
+            this,
+            REQUEST_CODE_CAPTCHA_DELETE,
+            deleteIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -159,7 +182,8 @@ class ProxyService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_error)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ERROR)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(contentPendingIntent)
+            .setDeleteIntent(deletePendingIntent)
             .setAutoCancel(true)
             .build()
 
@@ -183,9 +207,24 @@ class ProxyService : Service() {
         private const val NOTIF_ID = 1
         private const val NOTIF_ID_CAPTCHA = 2
         private const val REQUEST_CODE_CAPTCHA = 1001
+        private const val REQUEST_CODE_CAPTCHA_DELETE = 1002
 
+        /**
+         * Notification tap action — opens MainActivity with extras
+         * [EXTRA_CAPTCHA_LOG] and [EXTRA_CAPTCHA_URL]. MainActivity shows
+         * the captcha dialog in response.
+         */
         const val ACTION_SHOW_CAPTCHA = "com.glmproxy.app.action.SHOW_CAPTCHA"
-        const val EXTRA_SHOW_CAPTCHA = "show_captcha"
+
+        /**
+         * Notification swipe-dismiss action — fires the deleteIntent back
+         * to this service so we can clear the [captchaPendingStatic]
+         * debounce flag and let future captcha requests post a fresh
+         * notification. Without this, one swipe would permanently suppress
+         * all subsequent captcha alerts.
+         */
+        const val ACTION_CAPTCHA_DISMISSED = "com.glmproxy.app.action.CAPTCHA_DISMISSED"
+
         const val EXTRA_CAPTCHA_LOG = "captcha_log"
         const val EXTRA_CAPTCHA_URL = "captcha_url"
 
