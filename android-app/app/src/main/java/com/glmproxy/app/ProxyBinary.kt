@@ -122,7 +122,7 @@ object ProxyBinary {
         }, "proxy-stdout").start()
 
         processRef.set(process)
-        Log.i(TAG, "Started Go proxy (pid=${process.pid}) on 127.0.0.1:$port")
+        Log.i(TAG, "Started Go proxy on 127.0.0.1:$port (process=$process)")
         return process
     }
 
@@ -138,7 +138,7 @@ object ProxyBinary {
                     process.destroyForcibly()
                     process.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)
                 }
-                Log.i(TAG, "Stopped Go proxy (pid=${process.pid()})")
+                Log.i(TAG, "Stopped Go proxy")
             } catch (e: Exception) {
                 Log.w(TAG, "Error stopping Go proxy", e)
             }

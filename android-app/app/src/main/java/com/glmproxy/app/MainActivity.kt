@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
                     conn.disconnect()
                     if (code == 200) {
                         handler.post { loadPanel() }
-                        return
+                        return@thread
                     }
                 } catch (_: IOException) {
                     // proxy not ready yet — retry
