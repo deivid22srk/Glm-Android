@@ -42,7 +42,7 @@ Execute in this order unless dependencies force otherwise.
 |---|------|----------|--------|--------|--------|--------|
 | 010 | Fix captcha notification never fires on Android 13+ (request POST_NOTIFICATIONS) + add deleteIntent for swipe-dismiss | correctness | HIGH | S | **DONE** | C-01, C-02 |
 | 011 | Fix CI heredoc terminator (indented EOF swallows echo line) | correctness | MED | S | **DONE** | C-08 |
-| 012 | Add contentIntent to foreground notification so tapping opens the app | DX | MED | S | TODO | C-12 |
+| 012 | Add contentIntent to foreground notification so tapping opens the app | DX | MED | S | **DONE** | C-12 |
 | 013 | Update README_ANDROID.md to remove WebView references (doc drift) | docs | MED | S | TODO | DIR-01 |
 | 014 | Scope `usesCleartextTraffic` to 127.0.0.1 via network_security_config.xml | security | MED | S | TODO | SEC-01 |
 | 015 | Exclude `.glm5.2proxy/` from backup (credentials would sync to Google Drive) | security | HIGH | S | TODO | SEC-02 |
