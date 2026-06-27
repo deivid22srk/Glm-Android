@@ -48,7 +48,7 @@ android {
     signingConfigs {
         create("release") {
             // On GitHub Actions, signing.properties is created at /tmp/signing.properties
-            // from repository secrets. Locally, fall back to a debug-equivalent keystore.
+            // from repository secrets. Locally, fall back to no signing (debug build).
             val isGitHubAction = System.getenv("GITHUB_ACTIONS") == "true"
             val propertiesFilePath = if (isGitHubAction) {
                 "/tmp/signing.properties"
@@ -65,12 +65,8 @@ android {
                 storePassword = properties["storePassword"] as String?
             }
         }
-        getByName("debug") {
-            storeFile = file(layout.buildDirectory.dir("../testkey.keystore"))
-            storePassword = "testkey"
-            keyAlias = "testkey"
-            keyPassword = "testkey"
-        }
+        // Use AGP's default debug signing config (auto-generated debug.keystore).
+        // Do not override storeFile/storePassword here.
     }
 
     buildTypes {
