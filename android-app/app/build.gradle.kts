@@ -125,6 +125,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.material)
+    implementation(libs.kotlinx.coroutines.android)
 
     // Plan 019: test dependencies. JUnit + Truth for assertions +
     // Robolectric for tests that touch Android framework classes.

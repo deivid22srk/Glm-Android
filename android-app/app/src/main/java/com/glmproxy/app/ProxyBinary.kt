@@ -167,14 +167,25 @@ object ProxyBinary {
         //   while the app is installed).
         // - Host: loopback only — never expose the proxy to the network.
         // - Port: matches the port the WebView will hit.
-        // - Captcha headless browser: disabled on Android (no Chrome/Edge
-        //   binary available; users solve captchas interactively via WebView).
-        // - Account creator: disabled (depends on PowerShell on Windows).
+        //
+        // Captcha bridge: ENABLED. The Go default is already true
+        // (ZCODE_CAPTCHA_BRIDGE defaults to true in internal/config/config.go),
+        // but we set it explicitly for clarity and to guard against future
+        // default changes. The CaptchaBrokerService long-polls
+        // /zcode/captcha/poll to keep the bridge armed — without it, every
+        // chat completion that needs a captcha would fail with
+        // ErrBrowserUnavailable and the proxy would enter a retry loop.
+        //
+        // Headless browser: disabled on Android (no Chrome/Edge binary
+        // available to apps). The broker + system browser replaces it.
+        //
+        // Account creator: disabled (depends on PowerShell on Windows).
         val env = pb.environment()
         env["ZCODE_PROXY_DATA_DIR"] = dataDir.absolutePath
         env["ZCODE_PROXY_HOST"] = "127.0.0.1"
         env["ZCODE_PROXY_PORT"] = port.toString()
-        env["ZCODE_CAPTCHA_ENABLED"] = "0"
+        env["ZCODE_CAPTCHA_BRIDGE"] = "true"
+        env["ZCODE_CAPTCHA_CLIENT_PREFERENCE"] = "standalone-browser"
         env["ZCODE_HEADLESS_ENABLED"] = "0"
         env["ZCODE_ACCOUNT_CREATOR_ENABLED"] = "0"
         // Force TMPDIR into app-private storage (default /tmp doesn't exist

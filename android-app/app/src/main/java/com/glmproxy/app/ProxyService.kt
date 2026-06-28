@@ -56,6 +56,11 @@ class ProxyService : Service() {
             try {
                 ProxyBinary.start(this)
                 ProxyBinary.addLogListener(logListener)
+                // Start the captcha broker service alongside the proxy.
+                // It long-polls /zcode/captcha/poll to keep the bridge
+                // "armed" so chat completions don't fail with
+                // ErrBrowserUnavailable when no browser tab is open.
+                CaptchaBrokerService.start(this)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Go proxy", e)
                 stopSelf()
@@ -90,6 +95,7 @@ class ProxyService : Service() {
 
     override fun onDestroy() {
         ProxyBinary.removeLogListener(logListener)
+        CaptchaBrokerService.stop(this)
         ProxyBinary.stop()
         captchaPendingStatic.set(false)
         super.onDestroy()
@@ -264,6 +270,81 @@ class ProxyService : Service() {
             captchaPendingStatic.set(false)
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(NOTIF_ID_CAPTCHA)
+        }
+
+        /**
+         * Called by [CaptchaBrokerService] when the Go bridge pushes a
+         * captcha request to us via the long-poll mechanism. Posts the
+         * same high-priority notification the log-listener path uses, so
+         * the user gets a consistent UX regardless of whether the captcha
+         * need was detected via log scraping or via the broker's poll.
+         *
+         * This is a static method because the broker is a separate
+         * service instance — it can't access the ProxyService instance
+         * directly, but it can call into the companion object to share
+         * the notification infrastructure.
+         */
+        fun notifyCaptchaFromBroker(context: Context, logLine: String) {
+            if (captchaPendingStatic.compareAndSet(false, true)) {
+                val service = context as? ProxyService
+                if (service != null) {
+                    service.postCaptchaNotification(logLine)
+                } else {
+                    // Broker called us from its own service context — we
+                    // can't reach the instance method, but we can still
+                    // post the notification directly via NotificationManager.
+                    // The notification construction is duplicated here as
+                    // a fallback; the primary path (above) is preferred.
+                    postStandaloneCaptchaNotification(context, logLine)
+                }
+            }
+        }
+
+        /**
+         * Fallback notification path when the broker can't reach the
+         * ProxyService instance (e.g. called from a different service
+         * context). Constructs and posts the notification directly.
+         */
+        private fun postStandaloneCaptchaNotification(context: Context, logLine: String) {
+            val contentIntent = Intent(context, MainActivity::class.java).apply {
+                action = ACTION_SHOW_CAPTCHA
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(EXTRA_CAPTCHA_LOG, logLine)
+                putExtra(
+                    EXTRA_CAPTCHA_URL,
+                    "http://127.0.0.1:${ProxyBinary.port}/zcode/captcha/browser?client=standalone-browser"
+                )
+            }
+            val contentPendingIntent = PendingIntent.getActivity(
+                context,
+                REQUEST_CODE_CAPTCHA,
+                contentIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val deleteIntent = Intent(context, ProxyService::class.java).apply {
+                action = ACTION_CAPTCHA_DISMISSED
+            }
+            val deletePendingIntent = PendingIntent.getService(
+                context,
+                REQUEST_CODE_CAPTCHA_DELETE,
+                deleteIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID_CAPTCHA)
+                .setContentTitle(context.getString(R.string.captcha_notification_title))
+                .setContentText(context.getString(R.string.captcha_notification_text))
+                .setStyle(NotificationCompat.BigTextStyle()
+                    .bigText(context.getString(R.string.captcha_notification_big, logLine)))
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ERROR)
+                .setContentIntent(contentPendingIntent)
+                .setDeleteIntent(deletePendingIntent)
+                .setAutoCancel(true)
+                .build()
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(NOTIF_ID_CAPTCHA, notification)
+            Log.i(TAG, "Posted captcha notification from broker")
         }
     }
 }
