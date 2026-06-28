@@ -11,6 +11,10 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -31,6 +35,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class ProxyService : Service() {
     private val starting = AtomicBoolean(false)
+
+    /**
+     * Coroutine scope for the [CaptchaBroker]. Tied to the service's
+     * lifecycle — cancelled in [onDestroy] so all in-flight polls are
+     * cleaned up when the proxy stops.
+     */
+    private val brokerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var captchaBroker: CaptchaBroker? = null
 
     /**
      * Listener registered with [ProxyBinary] while the service is running.
@@ -56,11 +68,11 @@ class ProxyService : Service() {
             try {
                 ProxyBinary.start(this)
                 ProxyBinary.addLogListener(logListener)
-                // Start the captcha broker service alongside the proxy.
-                // It long-polls /zcode/captcha/poll to keep the bridge
-                // "armed" so chat completions don't fail with
-                // ErrBrowserUnavailable when no browser tab is open.
-                CaptchaBrokerService.start(this)
+                // Start the captcha broker — a plain class (not a Service)
+                // that long-polls /zcode/captcha/poll to keep the bridge
+                // armed. Runs as a coroutine in our scope, so no second
+                // foreground notification is needed.
+                captchaBroker = CaptchaBroker(this, brokerScope).also { it.start() }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Go proxy", e)
                 stopSelf()
@@ -95,7 +107,9 @@ class ProxyService : Service() {
 
     override fun onDestroy() {
         ProxyBinary.removeLogListener(logListener)
-        CaptchaBrokerService.stop(this)
+        captchaBroker?.stop()
+        captchaBroker = null
+        brokerScope.cancel()
         ProxyBinary.stop()
         captchaPendingStatic.set(false)
         super.onDestroy()

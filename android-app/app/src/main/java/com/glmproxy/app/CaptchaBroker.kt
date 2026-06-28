@@ -4,15 +4,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.lifecycle.LifecycleService
-import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.IOException
@@ -43,59 +40,45 @@ import java.net.URL
  * and the proxy enters a retry loop that the user sees as
  * "A Z.ai pediu captcha, mas nenhum navegador captcha esta disponivel".
  *
- * Before this service existed, the user had to keep a browser tab open
- * at `http://127.0.0.1:3005/zcode/captcha/browser?client=standalone-browser`
- * all the time just to keep the bridge armed — even when no captcha was
- * actually being requested.
+ * Before this broker existed, the user had to keep a browser tab open
+ * at the captcha page all the time just to keep the bridge armed.
  *
- * ## What this service does
+ * ## Design
  *
- * This service runs as part of the main [ProxyService] process (started
- * and stopped alongside it) and:
+ * This is a plain class, NOT a Service. It runs as a coroutine inside
+ * [ProxyService]'s process — the proxy service is already a foreground
+ * service with its own persistent notification, so the broker doesn't
+ * need its own service lifecycle or notification. This avoids:
  *
- * 1. Long-polls `/zcode/captcha/poll?client=standalone-browser` in a
- *    coroutine, keeping the client "online" in the bridge's client map.
- *    The Go side returns 204 No Content every 25s when there's no work,
- *    at which point we immediately poll again.
- * 2. When the bridge returns 200 with a `Request` JSON, the service
- *    launches the system browser at the captcha page URL (which loads
- *    the Aliyun SDK and solves the captcha interactively) AND posts a
- *    high-priority notification telling the user to solve it.
+ * 1. A second persistent notification (bad UX — the user would see
+ *    "GLM Proxy ativo" AND "GLM Proxy captcha broker" simultaneously).
+ * 2. `ForegroundServiceDidNotStartInTimeException` — which crashed the
+ *    app when the broker was a separate foreground service that didn't
+ *    call `startForeground()` within the 5-second window.
  *
- * The browser tab can be closed once the captcha is solved — the next
- * time a captcha is needed, this service will open a fresh tab
- * automatically.
+ * The broker is created by [ProxyService.onCreate] and destroyed by
+ * [ProxyService.onDestroy]. The coroutine scope is owned by ProxyService
+ * and passed in at construction time.
  *
  * ## Threading model
  *
- * All HTTP calls happen on `Dispatchers.IO` via `lifecycleScope`. The
- * service is a `LifecycleService` so the coroutine scope is tied to the
- * service's lifecycle — when [onDestroy] cancels it, all in-flight polls
- * are cancelled cleanly.
+ * All HTTP calls happen on `Dispatchers.IO` via the scope passed in.
+ * When the scope is cancelled (in ProxyService.onDestroy), all in-flight
+ * polls are cancelled cleanly.
  */
-class CaptchaBrokerService : LifecycleService() {
-
+class CaptchaBroker(
+    private val context: Context,
+    private val scope: CoroutineScope
+) {
     private var pollJob: Job? = null
 
-    override fun onCreate() {
-        super.onCreate()
+    /**
+     * Starts the long-poll loop. Idempotent — calling twice is a no-op.
+     */
+    fun start() {
+        if (pollJob?.isActive == true) return
         Log.i(TAG, "Captcha broker started — long-polling /zcode/captcha/poll")
-        startPolling()
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        super.onStartCommand(intent, flags, startId)
-        return START_STICKY
-    }
-
-    override fun onDestroy() {
-        pollJob?.cancel()
-        Log.i(TAG, "Captcha broker stopped")
-        super.onDestroy()
-    }
-
-    private fun startPolling() {
-        pollJob = lifecycleScope.launch(Dispatchers.IO) {
+        pollJob = scope.launch(Dispatchers.IO) {
             // Initial small delay so the proxy has time to bind its
             // listener before we start hitting it.
             delay(1000)
@@ -118,6 +101,15 @@ class CaptchaBrokerService : LifecycleService() {
     }
 
     /**
+     * Stops the long-poll loop. Cancels any in-flight HTTP request.
+     */
+    fun stop() {
+        pollJob?.cancel()
+        pollJob = null
+        Log.i(TAG, "Captcha broker stopped")
+    }
+
+    /**
      * Performs one long-poll cycle. Returns the [CaptchaRequest] if the
      * bridge has work for us, or null if it returned 204 (no work).
      *
@@ -126,7 +118,7 @@ class CaptchaBrokerService : LifecycleService() {
      * timeout to 35s (25s bridge window + slack) so we don't time out
      * before the Go side does.
      */
-    private suspend fun pollOnce(): CaptchaRequest? = withContext(Dispatchers.IO) {
+    private suspend fun pollOnce(): CaptchaRequest? {
         val url = URL("http://127.0.0.1:${ProxyBinary.port}/zcode/captcha/poll?client=standalone-browser")
         val conn = (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = 5000
@@ -139,14 +131,14 @@ class CaptchaBrokerService : LifecycleService() {
             conn.connect()
             val code = conn.responseCode
             if (code == 204) {
-                return@withContext null  // No work — bridge will keep us registered
+                return null  // No work — bridge will keep us registered
             }
             if (code != 200) {
                 throw IOException("HTTP $code from /zcode/captcha/poll")
             }
             val body = BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
             val json = JSONObject(body)
-            CaptchaRequest(
+            return CaptchaRequest(
                 id = json.getString("id"),
                 source = json.optString("source", "openai_proxy"),
                 timeoutMs = json.optLong("timeoutMs", 120000),
@@ -170,12 +162,8 @@ class CaptchaBrokerService : LifecycleService() {
      * chat completion.
      */
     private fun onCaptchaRequest(request: CaptchaRequest) {
-        // Reuse the captcha notification infrastructure in ProxyService
-        // so the user gets a consistent UX: a high-priority notification
-        // that, when tapped, opens MainActivity → captcha dialog →
-        // "Abrir no navegador" button.
         val logLine = "[broker] captcha request ${request.id} received — opening browser automatically"
-        ProxyService.notifyCaptchaFromBroker(this, logLine)
+        ProxyService.notifyCaptchaFromBroker(context, logLine)
 
         // Also open the browser automatically — the user doesn't need to
         // tap anything. The captcha page is smart enough to solve
@@ -186,7 +174,7 @@ class CaptchaBrokerService : LifecycleService() {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         try {
-            startActivity(browserIntent)
+            context.startActivity(browserIntent)
             Log.i(TAG, "Opened browser for captcha request ${request.id}")
         } catch (e: Exception) {
             Log.w(TAG, "No browser available to open captcha page — user will need to open manually", e)
@@ -196,52 +184,8 @@ class CaptchaBrokerService : LifecycleService() {
     private fun captchaUrl(): String =
         "http://127.0.0.1:${ProxyBinary.port}/zcode/captcha/browser?client=standalone-browser"
 
-    /**
-     * Posts a minimal foreground notification so the service isn't killed
-     * by the system. We piggyback on the ProxyService's foreground
-     * notification instead of creating our own — the broker runs in the
-     * same process and the user doesn't need to know there are two
-     * logical services.
-     *
-     * Note: this method is currently a no-op because CaptchaBrokerService
-     * is started by ProxyService via startForegroundService(), which
-     * means the broker is bound to the same process lifetime. If we
-     * later split it into a separate process, this would need to post
-     * its own foreground notification.
-     */
-    @Suppress("unused")
-    private fun postForegroundNotification() {
-        val notification = NotificationCompat.Builder(this, "glm_proxy_foreground")
-            .setContentTitle("GLM Proxy captcha broker")
-            .setContentText("Monitorando pedidos de captcha")
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-        // Not used currently — kept for future process-split.
-    }
-
     companion object {
         private const val TAG = "CaptchaBroker"
-
-        /**
-         * Starts the broker service. Called by [ProxyService.onCreate].
-         */
-        fun start(context: Context) {
-            val intent = Intent(context, CaptchaBrokerService::class.java)
-            try {
-                androidx.core.content.ContextCompat.startForegroundService(context, intent)
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not start CaptchaBrokerService", e)
-            }
-        }
-
-        /**
-         * Stops the broker service. Called by [ProxyService.onDestroy].
-         */
-        fun stop(context: Context) {
-            context.stopService(Intent(context, CaptchaBrokerService::class.java))
-        }
     }
 }
 

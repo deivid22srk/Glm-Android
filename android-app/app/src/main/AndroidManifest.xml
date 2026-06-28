@@ -56,15 +56,6 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- Captcha broker service — long-polls /zcode/captcha/poll to
-             keep the Go bridge armed so chat completions don't fail with
-             ErrBrowserUnavailable when no browser tab is open. Started
-             and stopped alongside ProxyService. -->
-        <service
-            android:name=".CaptchaBrokerService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
         <!-- Start-on-boot receiver (plan 020). exported=true is required
              for the system to deliver BOOT_COMPLETED; only the system can
              send that protected broadcast, so this is safe. -->
