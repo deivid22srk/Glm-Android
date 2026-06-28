@@ -224,6 +224,7 @@ func (s *Server) routes() http.Handler {
         mux.HandleFunc("GET /zcode/captcha/poll", s.captcha.Poll)
         mux.HandleFunc("POST /zcode/captcha/submit", s.captcha.Submit)
         mux.HandleFunc("POST /zcode/captcha/test", s.captcha.Test)
+        mux.HandleFunc("POST /zcode/captcha/requeue", s.captcha.Requeue)
         mux.HandleFunc("GET /zcode/captcha/config", s.captchaConfig)
         mux.HandleFunc("GET /zcode/captcha/browser", s.captchaBrowser)
 
