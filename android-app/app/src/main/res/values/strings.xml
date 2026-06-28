@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GLM Proxy</string>
+
+    <!-- Status -->
+    <string name="status_label">Status</string>
+    <string name="proxy_starting">Iniciando proxy…</string>
+    <string name="proxy_running">Rodando em 127.0.0.1:%1$d</string>
+    <string name="proxy_stopping">Parando proxy…</string>
+    <string name="proxy_stopped">Parado</string>
+    <string name="proxy_failed">Falha: %1$s</string>
+    <string name="proxy_failed_short">Falha ao iniciar</string>
+
+    <!-- Actions -->
+    <string name="start_server">Iniciar servidor</string>
+    <string name="stop_server">Parar servidor</string>
+    <string name="copy_url">Copiar URL</string>
+    <string name="copy_logs">Copiar</string>
+    <string name="open_in_browser">Abrir no navegador</string>
+    <string name="url_copied">URL copiada para a área de transferência</string>
+    <string name="logs_copied">Logs copiados</string>
+    <string name="login_google">Login Google</string>
+    <string name="view_captcha_webview">Ver captcha WebView</string>
+
+    <!-- Cards -->
+    <string name="url_label">URL do proxy</string>
+    <string name="recent_logs">Logs recentes</string>
+    <string name="error_label">Erro</string>
+    <string name="no_logs">Ainda não há logs</string>
+    <string name="accounts_label">Contas</string>
+    <string name="no_accounts">Nenhuma conta configurada. Use \"Login Google\" para adicionar.</string>
+    <string name="refresh">Atualizar</string>
+    <string name="active_label">Ativa</string>
+    <string name="quota_format">%1$d / %2$d tokens (%3$d%%)</string>
+
+    <!-- Foreground service notification -->
+    <string name="notification_channel_name">GLM Proxy</string>
+    <string name="notification_channel_description">Mantém o proxy local em execução</string>
+    <string name="notification_title">GLM Proxy ativo</string>
+    <string name="notification_text">Proxy em http://127.0.0.1:%1$d</string>
+
+    <!-- Captcha notification -->
+    <string name="notification_channel_captcha_name">Captcha exigido</string>
+    <string name="notification_channel_captcha_description">Avisa quando a Z.ai pede captcha e precisa da sua ação</string>
+    <string name="captcha_notification_title">Captcha exigido pela Z.ai</string>
+    <string name="captcha_notification_text">Toque para resolver e desbloquear o proxy</string>
+    <string name="captcha_notification_big">%1$s</string>
+
+    <!-- Captcha dialog -->
+    <string name="captcha_dialog_title">Captcha exigido</string>
+    <string name="captcha_dialog_message">A Z.ai está pedindo um captcha para concluir a autenticação. O proxy não consegue resolver automaticamente porque não há Chrome/Edge disponível neste dispositivo.\n\nAbra o navegador do dispositivo, resolva o captcha na página carregada, e depois volte para este app — o proxy continuará automaticamente.</string>
+    <string name="captcha_dialog_log_label">Log do proxy:</string>
+    <string name="captcha_dialog_url_label">URL para abrir:</string>
+    <string name="captcha_dialog_open_button">Abrir no navegador</string>
+    <string name="captcha_dialog_copy_url_button">Copiar URL</string>
+    <string name="captcha_dialog_dismiss_button">Fechar</string>
+</resources>

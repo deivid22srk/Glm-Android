@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  App icon — adapted from the user-provided 512x512 SVG.
+  ViewBox is 0..108 (adaptive icon standard), with content centered
+  around (54, 54) and kept inside the inner 72x72 safe zone (36..90)
+  so the launcher mask doesn't clip it.
+
+  Original SVG composition:
+   - Background: #0A0D10 (matches the app's dark theme bg_dark)
+   - Outer dashed circle: #161B22 (decorative, subtle)
+   - Cross hair lines: #00FF87 at 0.3 opacity (faded)
+   - 4 corner dots (the top one is dark, signaling "incomplete" state)
+   - Hexagon outline: #00FF87 (brand color, neon green)
+   - Inner filled hexagon: #00FF87 at 0.85 opacity
+   - Innermost hexagon cutout: bg color (creates the ring effect)
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background: solid dark (covers the full 108x108 viewport so the
+         adaptive icon's background layer is redundant — but we keep
+         ic_launcher_background.xml as a separate solid color in case
+         the launcher mask reveals it at the edges.) -->
+    <path
+        android:fillColor="#0A0D10"
+        android:pathData="M0,0h108v108h-108z" />
+
+    <!-- Outer dashed circle (decorative). Original r=150 in 512-space =
+         r=31.5 in 108-space. We approximate the dashed pattern with a
+         solid stroke — true dashes are not supported in vector drawables
+         on all API levels. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#161B22"
+        android:strokeWidth="1.7"
+        android:pathData="M54,54 m-31.5,0 a31.5,31.5 0 1,0 63,0 a31.5,31.5 0 1,0 -63,0" />
+
+    <!-- Cross hair lines (faded). Original length 190→80 in 512-space,
+         stroke 6. In 108-space: 40→17 length, stroke 1.3. -->
+    <group android:scaleX="1" android:scaleY="1">
+        <!-- Horizontal left: from (54-40, 54) to (54-17, 54) = (14,54)-(37,54) -->
+        <path
+            android:strokeColor="#00FF87"
+            android:strokeWidth="1.3"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"
+            android:strokeAlpha="0.3"
+            android:pathData="M14,54 L37,54" />
+        <!-- Horizontal right: (71,54)-(94,54) -->
+        <path
+            android:strokeColor="#00FF87"
+            android:strokeWidth="1.3"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"
+            android:strokeAlpha="0.3"
+            android:pathData="M71,54 L94,54" />
+        <!-- Vertical top: (54,14)-(54,37) -->
+        <path
+            android:strokeColor="#00FF87"
+            android:strokeWidth="1.3"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"
+            android:strokeAlpha="0.3"
+            android:pathData="M54,14 L54,37" />
+        <!-- Vertical bottom: (54,71)-(54,94) -->
+        <path
+            android:strokeColor="#00FF87"
+            android:strokeWidth="1.3"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"
+            android:strokeAlpha="0.3"
+            android:pathData="M54,71 L54,94" />
+    </group>
+
+    <!-- Four corner dots. Original r=12 in 512-space = r=2.5 in 108-space. -->
+    <!-- Left dot (green, "active"): (14, 54) -->
+    <path
+        android:fillColor="#00FF87"
+        android:pathData="M14,54 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+    <!-- Right dot (green): (94, 54) -->
+    <path
+        android:fillColor="#00FF87"
+        android:pathData="M94,54 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+    <!-- Top dot (dark, "incomplete"): (54, 14) -->
+    <path
+        android:fillColor="#1F2937"
+        android:pathData="M54,14 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+    <!-- Bottom dot (green): (54, 94) — original y=180 in 512-space,
+         which is slightly above the bottom. We use 94 for symmetry. -->
+    <path
+        android:fillColor="#00FF87"
+        android:pathData="M54,94 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" />
+
+    <!-- Hexagon outline (the brand mark). Original points in 512-space,
+         centered at (256, 256):
+           (-75, -43) (-80 - 0, 0 - 86) ... — these are deltas from center.
+         In 108-space, scale = 108/512 = 0.211.
+         Center moves from (256,256) to (54,54).
+         Delta (-75,-43) → (-15.8, -9.1) → absolute (38.2, 44.9)
+         Etc. We round to 1 decimal for compactness. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00FF87"
+        android:strokeWidth="2.5"
+        android:strokeLineJoin="round"
+        android:pathData="M38.2,44.9 L54,36.2 L69.8,44.9 L69.8,63.1 L54,71.8 L38.2,63.1 Z" />
+
+    <!-- Inner filled hexagon (slightly transparent green). Original
+         points: (0,-48) (42,-16) (42,32) (0,58) (-42,32) (-42,-16)
+         in 512-space, deltas from center (256,256).
+         In 108-space (scale 0.211):
+           (0,-48) → (0,-10.1) → (54, 43.9)
+           (42,-16) → (8.9,-3.4) → (62.9, 50.6)
+           (42,32) → (8.9,6.8) → (62.9, 60.8)
+           (0,58) → (0,12.2) → (54, 66.2)
+           (-42,32) → (-8.9,6.8) → (45.1, 60.8)
+           (-42,-16) → (-8.9,-3.4) → (45.1, 50.6) -->
+    <path
+        android:fillColor="#00FF87"
+        android:fillAlpha="0.85"
+        android:pathData="M54,43.9 L62.9,50.6 L62.9,60.8 L54,66.2 L45.1,60.8 L45.1,50.6 Z" />
+
+    <!-- Innermost hexagon cutout (background color, creates the ring
+         effect on the inner filled hexagon).
+         Original: (0,-22) (19,-6) (19,16) (0,27) (-19,16) (-19,-6)
+         In 108-space:
+           (0,-22) → (0,-4.6) → (54, 49.4)
+           (19,-6) → (4.0,-1.3) → (58.0, 52.7)
+           (19,16) → (4.0,3.4) → (58.0, 57.4)
+           (0,27) → (0,5.7) → (54, 59.7)
+           (-19,16) → (-4.0,3.4) → (50.0, 57.4)
+           (-19,-6) → (-4.0,-1.3) → (50.0, 52.7) -->
+    <path
+        android:fillColor="#0A0D10"
+        android:pathData="M54,49.4 L58.0,52.7 L58.0,57.4 L54,59.7 L50.0,57.4 L50.0,52.7 Z" />
+</vector>

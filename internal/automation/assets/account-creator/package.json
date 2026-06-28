@@ -1,0 +1,23 @@
+{
+  "name": "contas",
+  "version": "1.0.0",
+  "description": "Automacao de criacao de contas Z.ai com email temporario",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.js",
+    "run": "node src/main.js",
+    "test:logger": "node src/tests/test-logger.js",
+    "test:emails": "node src/tests/test-emails.js",
+    "test:browser": "node src/tests/test-browser.js",
+    "test:mail": "node src/tests/test-mail-poll.js",
+    "test:form": "node src/tests/test-zai-form.js",
+    "test:captcha": "node src/tests/test-captcha-flow.js",
+    "test:complete": "node src/tests/test-zai-complete.js",
+    "test:proxy-link": "node testes/test-proxy-link-consent.js"
+  },
+  "dependencies": {
+    "playwright": "^1.61.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

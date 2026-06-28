@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Material 3 dark color scheme — Blue tonal palette
+  Generated from Material Theme Builder (https://m3.material.io/styles/color)
+  for source color #3B82F6.
+
+  These are the raw hex values. The themes.xml file maps them into the
+  Material 3 color roles (colorPrimary, colorPrimaryContainer, etc.).
+-->
+<resources>
+    <!-- Primary (Blue 80 / Blue 20 container) -->
+    <color name="m3_primary">#FFAAC7FF</color>
+    <color name="m3_on_primary">#FF002E66</color>
+    <color name="m3_primary_container">#FF27477D</color>
+    <color name="m3_on_primary_container">#FFD7E3FF</color>
+
+    <!-- Secondary (neutralized blue, Blue 80 neutralized) -->
+    <color name="m3_secondary">#FFBAC7DC</color>
+    <color name="m3_on_secondary">#FF243140</color>
+    <color name="m3_secondary_container">#FF3B4858</color>
+    <color name="m3_on_secondary_container">#FFD6E3F9</color>
+
+    <!-- Tertiary (Blue 80 to give visual variety) -->
+    <color name="m3_tertiary">#FFD5BEE5</color>
+    <color name="m3_on_tertiary">#FF3A2948</color>
+    <color name="m3_tertiary_container">#FF513F60</color>
+    <color name="m3_on_tertiary_container">#FFF1DAFF</color>
+
+    <!-- Error -->
+    <color name="m3_error">#FFFFB4AB</color>
+    <color name="m3_on_error">#FF690005</color>
+    <color name="m3_error_container">#FF93000A</color>
+    <color name="m3_on_error_container">#FFFFDAD6</color>
+
+    <!-- Background & surface (Neutral) -->
+    <color name="m3_background">#FF101418</color>
+    <color name="m3_on_background">#FFE0E2E8</color>
+    <color name="m3_surface">#FF101418</color>
+    <color name="m3_on_surface">#FFE0E2E8</color>
+    <color name="m3_surface_variant">#FF43474E</color>
+    <color name="m3_on_surface_variant">#FFC3C7CF</color>
+
+    <!-- Surface container tones (M3 1.14.0+ uses these for cards/sheets) -->
+    <color name="m3_surface_container_low">#FF1A1E22</color>
+    <color name="m3_surface_container">#FF1F2329</color>
+    <color name="m3_surface_container_high">#FF292D34</color>
+    <color name="m3_surface_container_highest">#FF34383F</color>
+
+    <!-- Outline -->
+    <color name="m3_outline">#FF8B9199</color>
+    <color name="m3_outline_variant">#FF43474E</color>
+
+    <!-- Status colors used by the status dot drawables -->
+    <color name="status_running">#FF22C55E</color>
+    <color name="status_starting">#FFEAB308</color>
+    <color name="status_stopped">#FFEF4444</color>
+</resources>

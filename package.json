@@ -1,0 +1,18 @@
+{
+  "name": "glm5.2proxy-zcode-proxy",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "start": "go run ./cmd/server",
+    "dev": "go run ./cmd/server",
+    "build": "go build -trimpath -ldflags=\"-s -w\" -o build/glm5.2proxy-server.exe ./cmd/server",
+    "desktop:go-build": "go build -trimpath -o build/glm5.2proxy-desktop.exe .",
+    "desktop:dev": "go run github.com/wailsapp/wails/v2/cmd/wails@v2.12.0 dev",
+    "desktop:build": "go run github.com/wailsapp/wails/v2/cmd/wails@v2.12.0 build",
+    "zcode:patch-live-refresh": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/patch-zcode-live-refresh.ps1",
+    "zcode:restore": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/patch-zcode-live-refresh.ps1 -Restore",
+    "test": "go test ./...",
+    "test:race": "go test -race ./...",
+    "vet": "go vet ./..."
+  }
+}

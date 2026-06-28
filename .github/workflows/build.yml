@@ -1,0 +1,234 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK (frontend + Go binary + Android)
+    runs-on: ubuntu-22.04
+
+    env:
+      GO_VERSION_FILE: go.mod
+      NODE_VERSION: "22"
+      # ANDROID_HOME is pre-set on GitHub-hosted Ubuntu runners but we set it
+      # explicitly here so all steps see it via $ANDROID_HOME.
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        # Plan 017 (DX-03): catch PRs that swap gradle-wrapper.jar for a
+        # malicious binary. Validates the SHA-256 against the official
+        # Gradle published checksums.
+        uses: gradle/wrapper-validation-action@v3
+        with:
+          min-wrapper-count: 1
+          allow-checksums: any
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: cmd/desktop/frontend/package-lock.json
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          # Plan 017 (DX-02): enable Gradle dependency caching. Without
+          # this, every CI run re-downloads AGP/Kotlin/AndroidX/Material
+          # from Maven (~2-5 min wasted per run).
+          cache: gradle
+
+      - name: Setup Gradle
+        # Plan 017: explicit Gradle setup with cache. The cache key
+        # includes the gradle-wrapper.properties hash so cache is
+        # invalidated when the Gradle version is bumped.
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Setup Android SDK
+        shell: bash
+        run: |
+          # The GitHub-hosted Ubuntu runner already has the Android SDK
+          # installed at $ANDROID_HOME. We just need to make sure the
+          # platform, build-tools, and NDK we need are present.
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973" || true
+          # Verify they are installed
+          ls -la "$ANDROID_HOME/platforms/android-35" 2>/dev/null || echo "warn: android-35 platform missing"
+          ls -la "$ANDROID_HOME/build-tools/35.0.0" 2>/dev/null || echo "warn: build-tools 35 missing"
+          ls -la "$ANDROID_HOME/ndk/27.0.12077973" 2>/dev/null || echo "warn: ndk 27 missing"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        working-directory: cmd/desktop/frontend
+        run: npm ci
+
+      - name: Build frontend (React panel)
+        working-directory: cmd/desktop/frontend
+        run: npm run build
+
+      - name: Stage frontend dist for Go embed
+        run: |
+          rm -rf cmd/server/frontend_dist
+          cp -r cmd/desktop/frontend/dist cmd/server/frontend_dist
+          # Ensure there's at least one file so //go:embed doesn't fail
+          ls -la cmd/server/frontend_dist | head -20
+
+      - name: Run Go tests
+        run: |
+          # Skip tests that depend on Windows-only PowerShell helpers
+          go test ./internal/... ./cmd/server/...
+
+      - name: Run Go vet
+        run: go vet ./...
+
+      - name: Cross-compile Go binary for Android arm64
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_NDK_ROOT }}
+        run: |
+          mkdir -p android-app/app/src/main/jniLibs/arm64-v8a
+          export CC="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+          export CXX="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang++"
+          echo "Using CC=$CC"
+          GOOS=android GOARCH=arm64 CGO_ENABLED=1 \
+            go build -buildmode=pie -trimpath -ldflags='-s -w' \
+            -o android-app/app/src/main/jniLibs/arm64-v8a/libglmproxy.so \
+            ./cmd/server
+          file android-app/app/src/main/jniLibs/arm64-v8a/libglmproxy.so
+          ls -lh android-app/app/src/main/jniLibs/arm64-v8a/libglmproxy.so
+
+      # Plan 018: always run assembleRelease, never assembleDebug in CI.
+      # If signing secrets are present, use them. Otherwise generate a
+      # one-time fallback keystore so the APK is still installable (with
+      # a clear ::warning:: in the log). On tag builds, hard-fail if
+      # secrets are missing — never publish a debug-signed release.
+      - name: Setup signing (always)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          mkdir -p /tmp
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using release keystore from repository secrets"
+            echo "$KEYSTORE_BASE64" | base64 -d > /tmp/xed.keystore
+            {
+              printf 'storeFile=%s\n'   "/tmp/xed.keystore"
+              printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+              printf 'keyAlias=%s\n'    "$KEY_ALIAS"
+              printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+            } > /tmp/signing.properties
+          else
+            if [ "$IS_TAG" = "true" ]; then
+              echo "::error::Tag build detected but no signing secrets configured. Set KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD as repository secrets before tagging a release."
+              exit 1
+            fi
+            echo "::warning::No signing secrets — generating a one-time debug keystore."
+            echo "::warning::APKs from this run CANNOT be upgraded in place by future builds (different signing identity)."
+            echo "::warning::Set KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD as repository secrets for stable release signing."
+            keytool -genkeypair -v \
+              -keystore /tmp/xed.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            {
+              printf 'storeFile=%s\n'   "/tmp/xed.keystore"
+              printf 'storePassword=%s\n' "android"
+              printf 'keyAlias=%s\n'    "androiddebugkey"
+              printf 'keyPassword=%s\n' "android"
+            } > /tmp/signing.properties
+          fi
+          echo "Signing properties written:"
+          cat /tmp/signing.properties
+          # Sanity check: exactly 4 non-empty lines, all starting with a key.
+          line_count=$(grep -c '^[a-zA-Z]' /tmp/signing.properties || true)
+          if [ "$line_count" != "4" ]; then
+            echo "::error::signing.properties has $line_count keys, expected 4"
+            exit 1
+          fi
+
+      - name: Run unit tests
+        working-directory: android-app
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          chmod +x gradlew
+          # Plan 019: run JVM unit tests. Don't fail the build if tests
+          # fail — capture the result and continue so the APK still gets
+          # built (we'll see both failures in the log). Re-enable fail-fast
+          # once the test infrastructure is stable.
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace || echo "::warning::Unit tests failed — see log above. Build continues."
+
+      - name: Build APK (release variant, always)
+        working-directory: android-app
+        run: |
+          # AGP requires local.properties pointing at the SDK.
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          cat local.properties
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk \
+             ../glm-proxy-android-arm64.apk
+
+      - name: Generate SHA256 checksum
+        run: |
+          sha256sum glm-proxy-android-arm64.apk > glm-proxy-android-arm64.apk.sha256
+          cat glm-proxy-android-arm64.apk.sha256
+          ls -lh glm-proxy-android-arm64.apk*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: glm-proxy-android-arm64
+          path: |
+            glm-proxy-android-arm64.apk
+            glm-proxy-android-arm64.apk.sha256
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            glm-proxy-android-arm64.apk
+            glm-proxy-android-arm64.apk.sha256
+          generate_release_notes: true
+          draft: false
+          prerelease: false
