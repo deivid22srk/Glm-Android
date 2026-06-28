@@ -174,14 +174,68 @@ class MainActivity : AppCompatActivity() {
     /**
      * Inspects the launch intent for the [ProxyService.ACTION_SHOW_CAPTCHA]
      * action and opens the captcha dialog if present.
+     *
+     * Both extras ([ProxyService.EXTRA_CAPTCHA_URL] and
+     * [ProxyService.EXTRA_CAPTCHA_LOG]) are sanitized before use because
+     * MainActivity is exported=true and any third-party app can construct
+     * an explicit intent with arbitrary extras. Without sanitization, a
+     * malicious app could phish the user by injecting an attacker-chosen
+     * URL into the trusted captcha dialog (finding SEC-03, plan 016).
      */
     private fun maybeShowCaptchaDialogFromIntent(intent: Intent?) {
         if (intent?.action == ProxyService.ACTION_SHOW_CAPTCHA) {
-            val log = intent.getStringExtra(ProxyService.EXTRA_CAPTCHA_LOG) ?: ""
-            val url = intent.getStringExtra(ProxyService.EXTRA_CAPTCHA_URL)
-                ?: "http://127.0.0.1:${ProxyBinary.port}/zcode/captcha/browser?client=standalone-browser"
+            val log = sanitizeCaptchaLog(intent.getStringExtra(ProxyService.EXTRA_CAPTCHA_LOG))
+            val url = sanitizeCaptchaUrl(intent.getStringExtra(ProxyService.EXTRA_CAPTCHA_URL))
             showCaptchaDialog(log, url)
         }
+    }
+
+    /**
+     * Returns the captcha URL only if it points to the local proxy's
+     * captcha endpoint. Returns the default URL otherwise — never trusts
+     * an out-of-scheme URL from an untrusted caller.
+     *
+     * Guards against the exported-activity phishing vector where a
+     * third-party app could send ACTION_SHOW_CAPTCHA with an arbitrary
+     * URL extra (any scheme: http(s), intent:, content:, file:,
+     * javascript:), tricking the user into tapping "Abrir no navegador"
+     * and landing on an attacker-controlled page. See plan 016.
+     */
+    private fun sanitizeCaptchaUrl(input: String?): String {
+        val default = "http://127.0.0.1:${ProxyBinary.port}/zcode/captcha/browser?client=standalone-browser"
+        if (input.isNullOrBlank()) return default
+        return try {
+            val parsed = Uri.parse(input)
+            // Strict allowlist: only http(s) to 127.0.0.1 or localhost on
+            // the proxy port, path must start with /zcode/captcha/.
+            val isLoopback = parsed.host == "127.0.0.1" || parsed.host == "localhost"
+            val isHttp = parsed.scheme == "http" || parsed.scheme == "https"
+            val isCaptchaPath = parsed.path?.startsWith("/zcode/captcha/") == true
+            val portMatches = parsed.port == -1 || parsed.port == ProxyBinary.port
+            if (isLoopback && isHttp && isCaptchaPath && portMatches) {
+                input
+            } else {
+                Log.w(TAG, "Rejected out-of-scope captcha URL: scheme=${parsed.scheme} host=${parsed.host} path=${parsed.path}")
+                default
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse captcha URL extra", e)
+            default
+        }
+    }
+
+    /**
+     * Caps the log line length and strips control characters so a
+     * malicious caller can't inject misleading text into the captcha
+     * dialog body (e.g. "Your account will be deleted in 5 minutes").
+     * Newlines and tabs are preserved. See plan 016.
+     */
+    private fun sanitizeCaptchaLog(input: String?): String {
+        if (input.isNullOrBlank()) return "(sem log detalhado)"
+        // Cap at 500 chars to prevent dialog overflow
+        val capped = if (input.length > 500) input.take(500) + "…" else input
+        // Strip control characters (newlines/tabs preserved)
+        return capped.replace(Regex("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]"), "")
     }
 
     /**

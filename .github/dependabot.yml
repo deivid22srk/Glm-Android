@@ -1,0 +1,42 @@
+# Dependabot config — keeps Gradle deps and GitHub Actions versions current.
+# Plan 017 (DX-11): without this, dependency updates are entirely manual
+# and security advisories for transitive AndroidX deps don't generate PRs.
+version: 2
+updates:
+  # Gradle dependencies (AGP, Kotlin, AndroidX, Material, etc.)
+  - package-ecosystem: "gradle"
+    directory: "/android-app"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "android"
+    commit-message:
+      prefix: "deps(android)"
+    groups:
+      androidx:
+        patterns:
+          - "androidx.*"
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin.*"
+          - "com.google.devtools.ksp*"
+      google:
+        patterns:
+          - "com.google.android.material*"
+          - "com.android.tools*"
+
+  # GitHub Actions versions (checkout, setup-go, setup-java, etc.)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "deps(ci)"

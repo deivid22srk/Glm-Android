@@ -1,9 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data extraction rules — used by android:dataExtractionRules on
+  Android 12+ (API 31+). Replaces the older fullBackupContent for
+  cloud-backup AND device-transfer scenarios.
+
+  Same exclusion as backup_rules.xml: the credentials directory at
+  .glm5.2proxy/ is excluded from both cloud-backup (Google Drive) and
+  device-transfer (direct device-to-device migration), because the
+  encryption key derivation in the Go side is not verified to be
+  device-bound. See plan 015 for the full rationale.
+-->
 <data-extraction-rules>
     <cloud-backup>
         <include domain="file" path="."/>
+        <exclude domain="file" path=".glm5.2proxy/"/>
     </cloud-backup>
     <device-transfer>
         <include domain="file" path="."/>
+        <exclude domain="file" path=".glm5.2proxy/"/>
     </device-transfer>
 </data-extraction-rules>

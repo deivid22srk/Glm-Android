@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security config — scopes cleartext HTTP traffic to the local
+  loopback only (127.0.0.1 + localhost), which is what the app needs to
+  reach the embedded Go proxy. All other hosts inherit the system default
+  (HTTPS-only on Android 9+).
+
+  This replaces the broader android:usesCleartextTraffic="true" flag
+  previously set on the <application> element in AndroidManifest.xml.
+  With the global flag, any HTTP client used by the app or its AndroidX
+  dependencies could send cleartext to any host — a needless exposure.
+
+  See plan 014 for the full rationale.
+-->
+<network-security-config>
+    <!--
+      Localhost / loopback exemption: the Go proxy serves over plain HTTP
+      at http://127.0.0.1:3005. HTTPS would require a self-signed cert
+      + custom TrustManager, adding complexity for no real security gain
+      (the traffic never leaves the device).
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+
+    <!--
+      All other domains inherit the system default:
+      - Android 9+ (API 28+): cleartext denied by default
+      - Android 8 and below: cleartext allowed by default (system behavior)
+    -->
+</network-security-config>

@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Full backup rules — used by android:fullBackupContent on Android < 12.
+
+  The entire filesDir is included so that legitimate user preferences
+  survive a backup/restore cycle, BUT the credentials directory at
+  .glm5.2proxy/ is explicitly excluded. That directory contains the
+  encrypted ZCode account credentials blob and admin state (including
+  local API keys). Even though the credentials file is AES-256-GCM
+  encrypted by the Go side, the encryption key derivation is not
+  guaranteed to be device-bound — if it isn't, the backed-up blob is
+  decryptable off-device.
+
+  See plan 015 for the full security analysis.
+-->
 <full-backup-content>
     <include domain="file" path="."/>
+    <exclude domain="file" path=".glm5.2proxy/"/>
 </full-backup-content>

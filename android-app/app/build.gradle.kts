@@ -27,6 +27,18 @@ android {
         }
     }
 
+    // Plan 019: test infrastructure. Robolectric lets us run tests that
+    // depend on Android framework classes (Context, NotificationManager,
+    // etc.) on the JVM without an emulator. ReturnDefaultValues avoids
+    // NPEs when tests call Android methods that return null in the
+    // local JVM (vs. the real Android runtime).
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+            isIncludeAndroidResources = true
+        }
+    }
+
     buildFeatures {
         viewBinding = true
         buildConfig = true
@@ -47,8 +59,11 @@ android {
 
     signingConfigs {
         create("release") {
-            // On GitHub Actions, signing.properties is created at /tmp/signing.properties
-            // from repository secrets. Locally, fall back to no signing (debug build).
+            // Plan 018: on GitHub Actions, signing.properties is always
+            // created by the CI workflow (with real secrets OR a one-time
+            // fallback keystore). If it's missing, fail loudly — don't
+            // silently fall back to assembleDebug (which would produce an
+            // APK with a different applicationId and break upgrades).
             val isGitHubAction = System.getenv("GITHUB_ACTIONS") == "true"
             val propertiesFilePath = if (isGitHubAction) {
                 "/tmp/signing.properties"
@@ -63,6 +78,11 @@ android {
                 keyPassword = properties["keyPassword"] as String?
                 storeFile = (properties["storeFile"] as String?)?.let { File(it) }
                 storePassword = properties["storePassword"] as String?
+            } else if (isGitHubAction) {
+                throw GradleException(
+                    "GITHUB_ACTIONS=true but /tmp/signing.properties is missing. " +
+                    "The CI workflow must create it before invoking Gradle."
+                )
             }
         }
         // Use AGP's default debug signing config (auto-generated debug.keystore).
@@ -105,4 +125,10 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.material)
+
+    // Plan 019: test dependencies. JUnit + Truth for assertions +
+    // Robolectric for tests that touch Android framework classes.
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.truth)
 }

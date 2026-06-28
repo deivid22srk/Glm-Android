@@ -51,8 +51,11 @@ object ProxyBinary {
      * these via `s.logs.add("warn", "captcha.browser_missing", ...)` and
      * similar log entries — they're visible in the admin logs endpoint AND
      * on stdout because the proxy logs to both.
+     *
+     * Exposed as `internal` so unit tests (ProxyBinaryTest) can assert
+     * against the exact list — guards against silent removal of a marker.
      */
-    private val CAPTCHA_MARKERS = listOf(
+    internal val CAPTCHA_MARKERS = listOf(
         "captcha.browser_missing",
         "captcha requested",
         "a Z.ai pediu captcha",
@@ -149,6 +152,10 @@ object ProxyBinary {
         }
 
         val binary = binaryPath(context)
+        // Data dir for the Go proxy. Contains encrypted credentials and admin
+        // state. Excluded from cloud backup / device transfer — see
+        // res/xml/backup_rules.xml and res/xml/data_extraction_rules.xml.
+        // If you change this path, update those rules to match.
         val dataDir = File(context.filesDir, ".glm5.2proxy").apply { mkdirs() }
 
         val pb = ProcessBuilder(binary)

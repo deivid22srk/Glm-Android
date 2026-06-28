@@ -33,6 +33,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate Gradle wrapper
+        # Plan 017 (DX-03): catch PRs that swap gradle-wrapper.jar for a
+        # malicious binary. Validates the SHA-256 against the official
+        # Gradle published checksums.
+        uses: gradle/wrapper-validation-action@v3
+        with:
+          min-wrapper-count: 1
+          allow-checksums: any
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -51,6 +60,18 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          # Plan 017 (DX-02): enable Gradle dependency caching. Without
+          # this, every CI run re-downloads AGP/Kotlin/AndroidX/Material
+          # from Maven (~2-5 min wasted per run).
+          cache: gradle
+
+      - name: Setup Gradle
+        # Plan 017: explicit Gradle setup with cache. The cache key
+        # includes the gradle-wrapper.properties hash so cache is
+        # invalidated when the Gradle version is bumped.
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Setup Android SDK
         shell: bash
@@ -110,32 +131,51 @@ jobs:
           file android-app/app/src/main/jniLibs/arm64-v8a/libglmproxy.so
           ls -lh android-app/app/src/main/jniLibs/arm64-v8a/libglmproxy.so
 
-      - name: Setup signing (release)
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+      # Plan 018: always run assembleRelease, never assembleDebug in CI.
+      # If signing secrets are present, use them. Otherwise generate a
+      # one-time fallback keystore so the APK is still installable (with
+      # a clear ::warning:: in the log). On tag builds, hard-fail if
+      # secrets are missing — never publish a debug-signed release.
+      - name: Setup signing (always)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "No signing secrets provided — falling back to debug signing"
-            exit 0
+          mkdir -p /tmp
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using release keystore from repository secrets"
+            echo "$KEYSTORE_BASE64" | base64 -d > /tmp/xed.keystore
+            {
+              printf 'storeFile=%s\n'   "/tmp/xed.keystore"
+              printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+              printf 'keyAlias=%s\n'    "$KEY_ALIAS"
+              printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+            } > /tmp/signing.properties
+          else
+            if [ "$IS_TAG" = "true" ]; then
+              echo "::error::Tag build detected but no signing secrets configured. Set KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD as repository secrets before tagging a release."
+              exit 1
+            fi
+            echo "::warning::No signing secrets — generating a one-time debug keystore."
+            echo "::warning::APKs from this run CANNOT be upgraded in place by future builds (different signing identity)."
+            echo "::warning::Set KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD as repository secrets for stable release signing."
+            keytool -genkeypair -v \
+              -keystore /tmp/xed.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            {
+              printf 'storeFile=%s\n'   "/tmp/xed.keystore"
+              printf 'storePassword=%s\n' "android"
+              printf 'keyAlias=%s\n'    "androiddebugkey"
+              printf 'keyPassword=%s\n' "android"
+            } > /tmp/signing.properties
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > /tmp/xed.keystore
-          # Write signing.properties line-by-line via printf to avoid the
-          # bash heredoc indentation trap: with 'cat <<EOF', the EOF
-          # terminator MUST be at column 0 — but YAML 'run: |' requires
-          # consistent indentation, so an indented EOF silently swallows
-          # all following lines into the file. '<<-EOF' would work but
-          # only with tabs, not spaces. printf is unambiguous.
-          # See plan 011 for the full bug analysis.
-          {
-            printf 'storeFile=%s\n'   "/tmp/xed.keystore"
-            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
-            printf 'keyAlias=%s\n'    "$KEY_ALIAS"
-            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
-          } > /tmp/signing.properties
           echo "Signing properties written:"
           cat /tmp/signing.properties
           # Sanity check: exactly 4 non-empty lines, all starting with a key.
@@ -145,23 +185,20 @@ jobs:
             exit 1
           fi
 
-      - name: Build APK
+      - name: Build APK (release variant, always)
         working-directory: android-app
         run: |
           # AGP requires local.properties pointing at the SDK.
-          # ANDROID_HOME is set by the GitHub-hosted Ubuntu runner.
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           cat local.properties
           chmod +x gradlew
-          if [ -f /tmp/signing.properties ]; then
-            ./gradlew assembleRelease --no-daemon --stacktrace
-            cp app/build/outputs/apk/release/app-release.apk \
-               ../glm-proxy-android-arm64.apk
-          else
-            ./gradlew assembleDebug --no-daemon --stacktrace
-            cp app/build/outputs/apk/debug/app-debug.apk \
-               ../glm-proxy-android-arm64.apk
-          fi
+          # Plan 019: run JVM unit tests before assembling the APK.
+          # Fails fast if a regression is caught — cheaper than discovering
+          # it on a device after the APK is built.
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk \
+             ../glm-proxy-android-arm64.apk
 
       - name: Generate SHA256 checksum
         run: |

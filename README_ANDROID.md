@@ -12,13 +12,18 @@ This repository contains:
 - **`cmd/server/`** — Go entrypoint that embeds `cmd/desktop/frontend/dist`
   via `//go:embed` and serves it through the same HTTP server that already
   powers the OpenAI-compatible API.
-- **`android-app/`** — minimal Kotlin/Compose-free Android app that:
-  - Extracts the embedded Go binary from `assets/` to its private files dir.
+- **`android-app/`** — minimal Kotlin Android app (no Compose, no WebView) that:
+  - Locates the embedded Go binary from `nativeLibraryDir` (where Android
+    extracts `libglmproxy.so` from `jniLibs/arm64-v8a/` at install time).
   - Starts it as a child process via `ProcessBuilder` (no terminal, no shell).
   - Polls `http://127.0.0.1:3005/health` until the proxy is ready.
-  - Loads the React panel into a full-screen `WebView`.
+  - Renders a native Material 3 control surface (status card, URL card,
+    logs card, captcha dialog) — the React panel is opened in the system
+    browser via "Abrir no navegador" when the user needs account management.
   - Runs as a foreground service so the proxy stays alive when the user
     navigates away from the app.
+  - Posts a high-priority captcha notification when the Go proxy reports
+    `captcha.browser_missing`; tapping it opens a dialog with the URL.
 - **`.github/workflows/build.yml`** — CI that builds the frontend, compiles
   the Go binary for `linux/arm64` (Android-compatible), and assembles a
   signed APK.
@@ -31,31 +36,33 @@ This repository contains:
 │                                                              │
 │  ┌────────────────────────────┐    ┌─────────────────────┐  │
 │  │  MainActivity (Kotlin)     │    │  ProxyService       │  │
-│  │  ─────────────────────     │    │  (foreground)       │  │
-│  │  WebView ───────────────────┼───▶│                     │  │
-│  │  loads http://127.0.0.1:3k │    │  ProcessBuilder     │  │
-│  └────────────────────────────┘    │     .start()        │  │
-│                                    │        │            │  │
-│                                    │        ▼            │  │
-│                                    │  ┌──────────────┐   │  │
-│                                    │  │ Go binary    │   │  │
-│                                    │  │ (cmd/server) │   │  │
-│                                    │  │              │   │  │
-│                                    │  │ HTTP :3005   │   │  │
-│                                    │  │ React panel  │   │  │
-│                                    │  │ /v1/* API    │   │  │
-│                                    │  └──────┬───────┘   │  │
-│                                    └─────────┼───────────┘  │
-└──────────────────────────────────────┼──────────────────────┘
-                                       │
-                                       ▼
+│  │  Material 3 cards:         │    │  (foreground)       │  │
+│  │   - Status dot + text      │    │                     │  │
+│  │   - URL + copy/open btns   │    │  ProcessBuilder     │  │
+│  │   - Error                  │    │     .start()        │  │
+│  │   - Logs (last 500 lines)  │    │        │            │  │
+│  │   - Toggle button          │    │        ▼            │  │
+│  │                            │    │  ┌──────────────┐   │  │
+│  │  + Captcha dialog          │    │  │ Go binary    │   │  │
+│  │    (from notif tap)        │    │  │ (cmd/server) │   │  │
+│  └─────────────┬──────────────┘    │  │              │   │  │
+│                │ "Abrir navegador" │  │ HTTP :3005   │   │  │
+│                ▼                    │  │ React panel  │   │  │
+│  ┌────────────────────────────┐    │  │ /v1/* API    │   │  │
+│  │  System browser            │    │  └──────┬───────┘   │  │
+│  │  loads http://127.0.0.1:3k │    └─────────┼───────────┘  │
+│  │  → React panel             │              │              │
+│  └────────────────────────────┘              │              │
+└──────────────────────────────────────────────┼──────────────┘
+                                               │
+                                               ▼
                           https://zcode.z.ai  (Z.ai upstream)
 ```
 
 The Go binary is the **exact same code** that powers the desktop Wails app.
-The only difference is the shell around it: Wails on desktop, Kotlin +
-WebView on Android. No rewrite, no terminal, no `proot` — just a normal
-child process that happens to be a Go HTTP server.
+The only difference is the shell around it: Wails on desktop, native
+Material 3 Kotlin UI on Android. No rewrite, no terminal, no `proot` —
+just a normal child process that happens to be a Go HTTP server.
 
 ## How the Go binary is shipped (important)
 
@@ -136,21 +143,33 @@ build always produces an installable artifact.
 ## Usage
 
 1. Install the APK on an Android 8.0+ device (arm64).
-2. Open the app — the proxy starts automatically and the panel loads.
-3. Add a ZCode account in the panel.
-4. Generate a local API key in the panel.
-5. Configure any OpenAI-compatible client on the device to use:
+2. Open the app — it shows the control surface (proxy is NOT auto-started).
+3. Tap "Iniciar servidor". The status dot turns yellow (Starting), then
+   green (Running) once `/health` returns 200.
+4. The URL card appears showing `http://127.0.0.1:3005`. Tap "Copiar URL"
+   to copy it, or "Abrir no navegador" to open the React panel in the
+   system browser.
+5. In the browser panel, add a ZCode account and generate a local API key.
+6. Configure any OpenAI-compatible client on the device to use:
    - Base URL: `http://127.0.0.1:3005/v1`
    - Model: `glm-5.2` or `glm-5-turbo`
-   - API key: the key you generated.
+   - API key: the key you generated in the panel.
+7. If the Z.ai upstream requests a captcha, a high-priority notification
+   appears. Tap it to open a dialog with the captcha URL and a button to
+   open it in the browser. Solve the captcha; the proxy continues
+   automatically.
+8. Tap "Parar servidor" when done. The foreground service stops and the
+   Go process is gracefully shut down (SIGTERM, 3s grace).
 
 ## Android-specific notes
 
 - **Captcha**: the desktop app uses a headless Chrome/Edge binary to solve
   captchas. Android has no such binary available to apps, so the proxy is
   launched with `ZCODE_CAPTCHA_ENABLED=0` and `ZCODE_HEADLESS_ENABLED=0`.
-  Captchas that require user interaction will surface through the WebView
-  (the panel already has an interactive captcha flow).
+  Captchas that require user interaction surface as a high-priority
+  system notification. Tapping the notification opens a dialog with the
+  captcha URL and a button to open it in the system browser (no in-app
+  WebView — the panel itself runs in the system browser).
 - **Account creator**: disabled on Android (`ZCODE_ACCOUNT_CREATOR_ENABLED=0`)
   because it depends on PowerShell on Windows.
 - **Data directory**: credentials and admin state are stored in
@@ -159,6 +178,24 @@ build always produces an installable artifact.
 - **Network**: the proxy listens on `127.0.0.1` only — it is never exposed
   to the network. The `INTERNET` permission is required only for the proxy
   to call the upstream Z.ai APIs.
+
+### Material 3 (Material You)
+
+The native UI uses Material 3 with:
+
+- `Theme.Material3.Dark.NoActionBar` as the base
+- A Blue tonal palette (source color `#3B82F6`) mapped to all M3 color roles
+  (primary, secondary, tertiary, error, surface container tones, outline)
+- Dynamic Color (Material You) applied on Android 12+ — palette derives
+  from the user's wallpaper
+- Edge-to-edge layout with manual inset application on the toolbar (top)
+  and `NestedScrollView` (bottom) via `WindowInsetsCompat` listeners
+- `AppBarLayout` with `liftOnScroll` for the toolbar elevation effect
+- `?attr/materialCardViewOutlinedStyle` for all cards (16dp corner radius)
+- `Widget.Material3.Button` (filled) for the primary toggle,
+  `?attr/materialButtonTonalStyle` for secondary actions
+
+See <https://m3.material.io/> for the spec.
 
 ## License
 

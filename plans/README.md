@@ -43,14 +43,14 @@ Execute in this order unless dependencies force otherwise.
 | 010 | Fix captcha notification never fires on Android 13+ (request POST_NOTIFICATIONS) + add deleteIntent for swipe-dismiss | correctness | HIGH | S | **DONE** | C-01, C-02 |
 | 011 | Fix CI heredoc terminator (indented EOF swallows echo line) | correctness | MED | S | **DONE** | C-08 |
 | 012 | Add contentIntent to foreground notification so tapping opens the app | DX | MED | S | **DONE** | C-12 |
-| 013 | Update README_ANDROID.md to remove WebView references (doc drift) | docs | MED | S | TODO | DIR-01 |
-| 014 | Scope `usesCleartextTraffic` to 127.0.0.1 via network_security_config.xml | security | MED | S | TODO | SEC-01 |
-| 015 | Exclude `.glm5.2proxy/` from backup (credentials would sync to Google Drive) | security | HIGH | S | TODO | SEC-02 |
-| 016 | Fix exported-activity phishing vector: validate EXTRA_CAPTCHA_URL scheme | security | HIGH | S | TODO | SEC-03 |
-| 017 | Add Gradle dependency caching + wrapper validation + Dependabot config | DX | MED | S | TODO | DX-02, DX-03, DX-11 |
-| 018 | Always run assembleRelease in CI with fallback keystore (hard-fail on tag if secrets missing) | DX | MED | S | TODO | DX-13, SEC-06 |
-| 019 | Scaffold JVM test infrastructure + first regression test for isCaptchaRequest() | tests | HIGH | M | TODO | TC-01, TC-04 |
-| 020 | Add start-on-boot (opt-in) — closes the always-alive loop | direction | HIGH | S | TODO | DIR-03 |
+| 013 | Update README_ANDROID.md to remove WebView references (doc drift) | docs | MED | S | **DONE** | DIR-01 |
+| 014 | Scope `usesCleartextTraffic` to 127.0.0.1 via network_security_config.xml | security | MED | S | **DONE** | SEC-01 |
+| 015 | Exclude `.glm5.2proxy/` from backup (credentials would sync to Google Drive) | security | HIGH | S | **DONE** | SEC-02 |
+| 016 | Fix exported-activity phishing vector: validate EXTRA_CAPTCHA_URL scheme | security | HIGH | S | **DONE** | SEC-03 |
+| 017 | Add Gradle dependency caching + wrapper validation + Dependabot config | DX | MED | S | **DONE** | DX-02, DX-03, DX-11 |
+| 018 | Always run assembleRelease in CI with fallback keystore (hard-fail on tag if secrets missing) | DX | MED | S | **DONE** | DX-13, SEC-06 |
+| 019 | Scaffold JVM test infrastructure + first regression test for isCaptchaRequest() | tests | HIGH | M | **DONE** | TC-01, TC-04 |
+| 020 | Add start-on-boot (opt-in) — closes the always-alive loop | direction | HIGH | S | **DONE** | DIR-03 |
 
 ## Dependency ordering
 
