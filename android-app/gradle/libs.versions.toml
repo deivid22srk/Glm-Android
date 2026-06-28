@@ -12,7 +12,7 @@ browser = "1.8.0"
 coroutines = "1.9.0"
 junit = "4.13.2"
 robolectric = "4.13"
-truth = "1.4.4"
+truth = "1.4.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
