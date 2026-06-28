@@ -171,13 +171,20 @@ object ProxyBinary {
         // Captcha bridge: ENABLED. The Go default is already true
         // (ZCODE_CAPTCHA_BRIDGE defaults to true in internal/config/config.go),
         // but we set it explicitly for clarity and to guard against future
-        // default changes. The CaptchaBrokerService long-polls
-        // /zcode/captcha/poll to keep the bridge armed — without it, every
-        // chat completion that needs a captcha would fail with
-        // ErrBrowserUnavailable and the proxy would enter a retry loop.
+        // default changes. The CaptchaWebViewManager loads the captcha
+        // broker page in an invisible WebView which polls
+        // /zcode/captcha/poll?client=android-webview — replicating the
+        // desktop "headless Chrome" behavior.
+        //
+        // Preferred client: android-webview. The bridge's chooseClient()
+        // returns this client when it has polled in the last 45 seconds,
+        // which is always true while the WebView is alive. The
+        // standalone-browser client is used as a fallback when the
+        // WebView detects an interactive captcha and opens the system
+        // browser for manual solving.
         //
         // Headless browser: disabled on Android (no Chrome/Edge binary
-        // available to apps). The broker + system browser replaces it.
+        // available to apps). The WebView replaces it.
         //
         // Account creator: disabled (depends on PowerShell on Windows).
         val env = pb.environment()
@@ -185,7 +192,7 @@ object ProxyBinary {
         env["ZCODE_PROXY_HOST"] = "127.0.0.1"
         env["ZCODE_PROXY_PORT"] = port.toString()
         env["ZCODE_CAPTCHA_BRIDGE"] = "true"
-        env["ZCODE_CAPTCHA_CLIENT_PREFERENCE"] = "standalone-browser"
+        env["ZCODE_CAPTCHA_CLIENT_PREFERENCE"] = "android-webview"
         env["ZCODE_HEADLESS_ENABLED"] = "0"
         env["ZCODE_ACCOUNT_CREATOR_ENABLED"] = "0"
         // Force TMPDIR into app-private storage (default /tmp doesn't exist

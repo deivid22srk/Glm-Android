@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -145,10 +146,35 @@ class MainActivity : AppCompatActivity() {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        // Request SYSTEM_ALERT_WINDOW for the invisible captcha WebView.
+        // The CaptchaWebViewManager attaches a 1x1 transparent WebView to
+        // the WindowManager via TYPE_APPLICATION_OVERLAY so it keeps
+        // running JavaScript in background. This permission must be
+        // granted by the user via the system overlay settings screen.
+        // If denied, the WebView falls back to TYPE_PRIVATE which doesn't
+        // need the permission but may be killed more aggressively.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(
+                this,
+                "Permita sobreposição de tela para que o captcha automático funcione em background",
+                Toast.LENGTH_LONG
+            ).show()
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            try {
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not open overlay settings", e)
+            }
+        }
+
         binding.btnToggle.setOnClickListener { onToggleClicked() }
         binding.btnCopyUrl.setOnClickListener { copyUrlToClipboard() }
         binding.btnOpenBrowser.setOnClickListener { openInBrowser() }
         binding.btnCopyLogs.setOnClickListener { copyLogsToClipboard() }
+        binding.btnLoginGoogle.setOnClickListener { onLoginGoogleClicked() }
 
         // Assess current state on launch — the proxy may already be running
         // (e.g. service started from a previous launch that the user
@@ -497,6 +523,42 @@ class MainActivity : AppCompatActivity() {
             Log.w(TAG, "No browser available", e)
             Toast.makeText(this, "Nenhum navegador disponível", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * Called when the user taps "Login Google". Initiates the ZCode/Z.ai
+     * OAuth flow by calling the proxy's /api/admin/auth/login/start
+     * endpoint and opening the returned authorization URL in a Chrome
+     * Custom Tab. The user signs in with Google on chat.z.ai, the
+     * callback redirects to the proxy which stores the account, and the
+     * user returns to the app.
+     *
+     * Requires the proxy to be running (state == RUNNING). If the proxy
+     * is stopped, shows a Toast asking the user to start it first.
+     */
+    private fun onLoginGoogleClicked() {
+        if (!ProxyBinary.isRunning()) {
+            Toast.makeText(
+                this,
+                "Inicie o servidor antes de fazer login",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        Toast.makeText(this, "Abrindo login Google...", Toast.LENGTH_SHORT).show()
+        // Network call must be off the main thread.
+        Thread({
+            val ok = GoogleLoginHelper.startLogin(this)
+            if (!ok) {
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "Falha ao iniciar login. Verifique se o proxy está rodando.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }, "google-login").start()
     }
 
     companion object {

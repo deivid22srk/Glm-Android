@@ -125,6 +125,8 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.material)
+    implementation(libs.androidx.webkit)
+    implementation(libs.androidx.browser)
     implementation(libs.kotlinx.coroutines.android)
 
     // Plan 019: test dependencies. JUnit + Truth for assertions +

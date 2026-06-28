@@ -18,6 +18,14 @@
          long streaming chat completion is in flight. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Overlay permission for the invisible captcha WebView. The
+         CaptchaWebViewManager attaches a 1x1 transparent WebView to
+         the WindowManager so it keeps running JavaScript in background.
+         TYPE_APPLICATION_OVERLAY requires this permission. If the user
+         denies it, the manager falls back to TYPE_PRIVATE which doesn't
+         need the permission but may be killed more aggressively. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- Start-on-boot (plan 020, DIR-03): opt-in feature. Allows the
          BootReceiver to be invoked after device reboot so the proxy
          can restart itself if the user enabled the preference.

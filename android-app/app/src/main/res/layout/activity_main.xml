@@ -274,6 +274,18 @@
                 app:iconGravity="textStart"
                 app:cornerRadius="16dp" />
 
+            <!-- Login Google Button (opens OAuth flow in Chrome Custom Tab) -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_login_google"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/login_google"
+                app:icon="@android:drawable/ic_menu_my_calendar"
+                app:iconGravity="textStart"
+                app:cornerRadius="16dp" />
+
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

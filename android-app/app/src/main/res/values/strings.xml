@@ -19,6 +19,7 @@
     <string name="open_in_browser">Abrir no navegador</string>
     <string name="url_copied">URL copiada para a área de transferência</string>
     <string name="logs_copied">Logs copiados</string>
+    <string name="login_google">Login Google</string>
 
     <!-- Cards -->
     <string name="url_label">URL do proxy</string>
